@@ -189,7 +189,7 @@ class MetaworldWrapper(LLFWrapper):
         observation = self._format_obs(observation)
         info['success'] = bool(info['success'])
         info['video'] = video if self.env._render_video else None
-        return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated, truncated, info
+        return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or reward==10, truncated, info
 
     def _reset(self, *, seed=None, options=None):
         self._current_observation, info = self.env.reset(seed=seed, options=options)
