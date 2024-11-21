@@ -33,10 +33,11 @@ class MetaworldWrapper(LLFWrapper):
         self.p_control_threshold = 1e-4 # the threshold for declaring goal reaching (for convergnece of P controller)
         self.control_relative_position = False
         self._current_observation = None
+        self._prev_expert_action = None
 
         if self.env.env_name=='push-v2':
             self._step = self._step_push_v2
-            self.puck_is_gripped_threshold = 1e-5
+            self.puck_is_gripped_threshold = 1e-3
         else:
             self._step = self._step_general
 
@@ -151,7 +152,6 @@ class MetaworldWrapper(LLFWrapper):
                 action = action.copy()
                 action[:3] += self._current_pos  # turn relative position to absolute position
 
-        expert_action = self.expert_action  # absolute or relative
         video = []
         for _ in range(self.p_control_time_out):
             control = self.p_control(action)  # this controls the hand to move an absolute position
@@ -164,12 +164,25 @@ class MetaworldWrapper(LLFWrapper):
 
         feedback_type = self._feedback_type
         # Some pre-computation of the feedback
+        expert_action = self.expert_action  # absolute or relative
+        if self._prev_expert_action is None:
+            self._prev_expert_action = expert_action.copy()
         # Target pos is in absolute position
         if self.control_relative_position:
             target_pos = expert_action.copy()
             target_pos[:3] += self._current_pos
         else:
             target_pos = expert_action
+        
+        self._prev_expert_action = expert_action
+
+        # Compute Recommend Target
+        if self.control_relative_position:
+            recommend_target_pos = expert_action
+            recommend_target_pos[:3] += self._current_pos
+        else:
+            recommend_target_pos = self.expert_action
+
         moving_away = np.linalg.norm(target_pos[:3]-previous_pos) < np.linalg.norm(target_pos[:3]-self._current_pos)
         if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
             gripper_feedback = self.format(close_gripper_feedback)
@@ -200,7 +213,7 @@ class MetaworldWrapper(LLFWrapper):
                     _feedback = gripper_feedback
             feedback.hn = _feedback
         if 'fp' in feedback_type:  # suggest the expert goal
-            feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(target_pos))
+            feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(recommend_target_pos))
         observation = self._format_obs(observation)
         info['success'] = bool(info['success'])
         info['video'] = video if self.env._render_video else None
@@ -215,7 +228,6 @@ class MetaworldWrapper(LLFWrapper):
                 action = action.copy()
                 action[:3] += self._current_pos  # turn relative position to absolute position
 
-        expert_action = self.expert_action  # absolute or relative
         video = []
         for _ in range(self.p_control_time_out):
             control = self.p_control(action)  # this controls the hand to move an absolute position
@@ -228,14 +240,27 @@ class MetaworldWrapper(LLFWrapper):
 
         feedback_type = self._feedback_type
         # Some pre-computation of the feedback
+        expert_action = self.expert_action  # absolute or relative
+        if self._prev_expert_action is None:
+            self._prev_expert_action = expert_action.copy()
         # Target pos is in absolute position
         if self.control_relative_position:
-            target_pos = expert_action.copy()
+            target_pos = self._prev_expert_action.copy()
             target_pos[:3] += self._current_pos
         else:
-            target_pos = expert_action
+            target_pos = self._prev_expert_action
+
+        self._prev_expert_action = expert_action
+
+        # Compute Recommend Target
+        if self.control_relative_position:
+            recommend_target_pos = expert_action
+            recommend_target_pos[:3] += self._current_pos
+        else:
+            recommend_target_pos = self.expert_action
+
         moving_away = np.linalg.norm(target_pos[:3]-previous_pos) < np.linalg.norm(target_pos[:3]-self._current_pos)
-        puck_gripped = np.linalg.norm((self._current_puck_pos - previous_puck_pos) - (self._current_pos - previous_pos)) < self.puck_is_gripped_threshold and action[3] > 0.5
+        puck_gripped = np.linalg.norm(self._current_puck_pos - previous_puck_pos) > 0 and action[3] > 0.5
         if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
             gripper_feedback = self.format(close_gripper_feedback)
         elif target_pos[3] < 0.5 and action[3] > 0.5:  #the gripper should be open instead.
@@ -288,7 +313,7 @@ class MetaworldWrapper(LLFWrapper):
                     _feedback = gripper_feedback
             feedback.hn = _feedback
         if 'fp' in feedback_type:  # suggest the expert goal
-            feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(target_pos))
+            feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(recommend_target_pos))
         observation = self._format_obs(observation)
         info['success'] = bool(info['success'])
         info['video'] = video if self.env._render_video else None
