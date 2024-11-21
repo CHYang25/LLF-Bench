@@ -2,6 +2,7 @@ from typing import Dict, SupportsFloat, Union
 import numpy as np
 from llfbench.envs.llf_env import LLFWrapper, Feedback
 from llfbench.envs.metaworld.prompts import *
+from llfbench.envs.metaworld.task_prompts.push_v2_prompts import *
 from llfbench.envs.metaworld.gains import P_GAINS
 import metaworld
 import importlib
@@ -33,6 +34,12 @@ class MetaworldWrapper(LLFWrapper):
         self.control_relative_position = False
         self._current_observation = None
 
+        if self.env.env_name=='push-v2':
+            self._step = self._step_push_v2
+            self.puck_is_gripped_threshold = 1e-5
+        else:
+            self._step = self._step_general
+
     @property
     def reward_range(self):
         return (0,10)
@@ -54,6 +61,14 @@ class MetaworldWrapper(LLFWrapper):
     def _current_pos(self):
         """ Curret position of the hand. """
         return self.mw_policy._parse_obs(self.current_observation)['hand_pos']
+    
+    @property
+    def _current_puck_pos(self):
+        return self.mw_policy._parse_obs(self.current_observation)['puck_pos']
+    
+    @property
+    def _goal_pos(self):
+        return self.mw_policy._parse_obs(self.current_observation)['goal_pos']
 
     @property
     def expert_action(self):
@@ -128,7 +143,7 @@ class MetaworldWrapper(LLFWrapper):
         control["grab_effort"] = action[3]
         return control.array
 
-    def _step(self, action):
+    def _step_general(self, action):
         # Run P controller until convergence or timeout
         # action is viewed as the desired position + grab_effort
         previous_pos = self._current_pos  # the position of the hand before moving
@@ -177,6 +192,94 @@ class MetaworldWrapper(LLFWrapper):
         if 'hn' in feedback_type:  # moved away from the expert goal
             # position feedback
             _feedback = self.format(hn_feedback) if moving_away else None
+            # gripper feedback
+            if gripper_feedback is not None:
+                if _feedback is not None:
+                    _feedback += 'Also, ' + gripper_feedback[0].lower() + gripper_feedback[1:]
+                else:
+                    _feedback = gripper_feedback
+            feedback.hn = _feedback
+        if 'fp' in feedback_type:  # suggest the expert goal
+            feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(target_pos))
+        observation = self._format_obs(observation)
+        info['success'] = bool(info['success'])
+        info['video'] = video if self.env._render_video else None
+        return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or reward==10, truncated, info
+    
+    def _step_push_v2(self, action):
+        # Run P controller until convergence or timeout
+        # action is viewed as the desired position + grab_effort
+        previous_pos = self._current_pos  # the position of the hand before moving
+        previous_puck_pos = self._current_puck_pos
+        if self.control_relative_position:
+                action = action.copy()
+                action[:3] += self._current_pos  # turn relative position to absolute position
+
+        video = []
+        for _ in range(self.p_control_time_out):
+            control = self.p_control(action)  # this controls the hand to move an absolute position
+            observation, reward, terminated, truncated, info = self.env.step(control)
+            self._current_observation = observation
+            desired_pos = action[:3]
+            video.append(self.env.render()[::-1] if self.env._render_video else None)
+            if np.abs(desired_pos - self._current_pos).max() < self.p_control_threshold:
+                break
+
+        feedback_type = self._feedback_type
+        # Some pre-computation of the feedback
+        expert_action = self.expert_action  # absolute or relative
+        # Target pos is in absolute position
+        if self.control_relative_position:
+            target_pos = expert_action.copy()
+            target_pos[:3] += self._current_pos
+        else:
+            target_pos = expert_action
+        moving_away = np.linalg.norm(target_pos[:3]-previous_pos) < np.linalg.norm(target_pos[:3]-self._current_pos)
+        puck_gripped = np.linalg.norm((self._current_puck_pos - previous_puck_pos) - (self._current_pos - previous_pos)) < self.puck_is_gripped_threshold and action[3] > 0.5
+        if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
+            gripper_feedback = self.format(close_gripper_feedback)
+        elif target_pos[3] < 0.5 and action[3] > 0.5:  #the gripper should be open instead.
+            gripper_feedback = self.format(open_gripper_feedback)
+        else:
+            gripper_feedback = None
+        # Compute feedback
+        feedback = Feedback()
+        if 'r' in  feedback_type:
+            feedback.r = self.format(r_feedback, reward=np.round(reward, 3))
+        if 'hp' in feedback_type:  # moved closer to the expert goal
+            if not moving_away:
+                if puck_gripped:
+                    _text_goal_pos = np.round(self._goal_pos, 3)
+                    _text_action = np.round(action, 3)
+                    _reason_goal = self.format(hp_move_to_goal_feedback, goal=_text_goal_pos, action=_text_action)
+                else:
+                    _text_puck_pos = np.round(self._current_puck_pos, 3)
+                    _text_action = np.round(action, 3)
+                    _reason_goal = self.format(hp_move_to_puck_feedback, puck=_text_puck_pos, action=_text_action)
+                _feedback = self.format(hp_feedback)
+                _feedback = _reason_goal + _feedback[0].lower() + _feedback[1:]
+            else:
+                _feedback = None
+            if gripper_feedback is not None:
+                if _feedback is not None:
+                    _feedback += 'But, ' + gripper_feedback[0].lower() + gripper_feedback[1:]
+                else:
+                    _feedback = gripper_feedback
+            feedback.hp = _feedback
+        if 'hn' in feedback_type:  # moved away from the expert goal
+            if moving_away:
+                if puck_gripped:
+                    _text_goal_pos = np.round(self._goal_pos, 3)
+                    _text_action = np.round(action, 3)
+                    _reason_goal = self.format(hn_move_to_goal_feedback, goal=_text_goal_pos, action=_text_action)
+                else:
+                    _text_puck_pos = np.round(self._current_puck_pos, 3)
+                    _text_action = np.round(action, 3)
+                    _reason_goal = self.format(hn_move_to_puck_feedback, puck=_text_puck_pos, action=_text_action)
+                _feedback = self.format(hn_feedback)
+                _feedback = _reason_goal + _feedback[0].lower() + _feedback[1:]
+            else:
+                _feedback = None
             # gripper feedback
             if gripper_feedback is not None:
                 if _feedback is not None:
