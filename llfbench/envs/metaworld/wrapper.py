@@ -151,6 +151,7 @@ class MetaworldWrapper(LLFWrapper):
                 action = action.copy()
                 action[:3] += self._current_pos  # turn relative position to absolute position
 
+        expert_action = self.expert_action  # absolute or relative
         video = []
         for _ in range(self.p_control_time_out):
             control = self.p_control(action)  # this controls the hand to move an absolute position
@@ -163,7 +164,6 @@ class MetaworldWrapper(LLFWrapper):
 
         feedback_type = self._feedback_type
         # Some pre-computation of the feedback
-        expert_action = self.expert_action  # absolute or relative
         # Target pos is in absolute position
         if self.control_relative_position:
             target_pos = expert_action.copy()
@@ -215,6 +215,7 @@ class MetaworldWrapper(LLFWrapper):
                 action = action.copy()
                 action[:3] += self._current_pos  # turn relative position to absolute position
 
+        expert_action = self.expert_action  # absolute or relative
         video = []
         for _ in range(self.p_control_time_out):
             control = self.p_control(action)  # this controls the hand to move an absolute position
@@ -227,7 +228,6 @@ class MetaworldWrapper(LLFWrapper):
 
         feedback_type = self._feedback_type
         # Some pre-computation of the feedback
-        expert_action = self.expert_action  # absolute or relative
         # Target pos is in absolute position
         if self.control_relative_position:
             target_pos = expert_action.copy()
