@@ -13,6 +13,9 @@ from metaworld.policies.action import Action
 from metaworld.policies import SawyerDrawerOpenV1Policy, SawyerDrawerOpenV2Policy, SawyerReachV2Policy
 import re
 
+# so that we won't get scientific notation
+np.set_printoptions(suppress=True)
+
 class MetaworldWrapper(LLFWrapper):
 
     """ This is wrapper for gym_bandits. """
