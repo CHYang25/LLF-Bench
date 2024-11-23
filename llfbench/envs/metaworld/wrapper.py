@@ -2,8 +2,11 @@ from typing import Dict, SupportsFloat, Union
 import numpy as np
 from llfbench.envs.llf_env import LLFWrapper, Feedback
 from llfbench.envs.metaworld.prompts import *
-from llfbench.envs.metaworld.task_prompts.push_v2_prompts import *
-from llfbench.envs.metaworld.gains import P_GAINS
+from llfbench.envs.metaworld.task_prompts import (
+    push_v2_prompts,
+    door_open_v2_prompts,
+)
+from llfbench.envs.metaworld.gains import P_GAINS, TERM_REWARDS
 import metaworld
 import importlib
 import json
@@ -28,19 +31,27 @@ class MetaworldWrapper(LLFWrapper):
         # load the scripted policy
         if self.env.env_name=='peg-insert-side-v2':
             module = importlib.import_module(f"metaworld.policies.sawyer_peg_insertion_side_v2_policy")
-            self._policy = getattr(module, f"SawyerPegInsertionSideV2Policy")()
+            self._policy_name = f"SawyerPegInsertionSideV2Policy"
+            self._policy = getattr(module, self._policy_name)()
         else:
             module = importlib.import_module(f"metaworld.policies.sawyer_{self.env.env_name.replace('-','_')}_policy")
-            self._policy = getattr(module, f"Sawyer{self.env.env_name.title().replace('-','')}Policy")()
+            self._policy_name = f"Sawyer{self.env.env_name.title().replace('-','')}Policy"
+            self._policy = getattr(module, self._policy_name)()
         self.p_control_time_out = 20 # timeout of the position tracking (for convergnece of P controller)
         self.p_control_threshold = 1e-4 # the threshold for declaring goal reaching (for convergnece of P controller)
         self.control_relative_position = False
         self._current_observation = None
         self._prev_expert_action = None
+        self.term_reward = TERM_REWARDS[self._policy_name]
+        self.text_with_tensor = False
 
-        if self.env.env_name=='push-v2':
+        if self.env.env_name == 'push-v2':
             self._step = self._step_push_v2
             self.puck_is_gripped_threshold = 1e-3
+        elif self.env.env_name == 'door-open-v2':
+            self._step = self._step_door_open_v2
+            self.door_initial_pos = None
+            self.door_is_reached_threshold = 1e-3
         else:
             self._step = self._step_general
 
@@ -69,6 +80,10 @@ class MetaworldWrapper(LLFWrapper):
     @property
     def _current_puck_pos(self):
         return self.mw_policy._parse_obs(self.current_observation)['puck_pos']
+    
+    @property
+    def _current_door_pos(self):
+        return self.mw_policy._parse_obs(self.current_observation)['door_pos']
     
     @property
     def _goal_pos(self):
@@ -172,10 +187,10 @@ class MetaworldWrapper(LLFWrapper):
             self._prev_expert_action = expert_action.copy()
         # Target pos is in absolute position
         if self.control_relative_position:
-            target_pos = expert_action.copy()
+            target_pos = self._prev_expert_action.copy()
             target_pos[:3] += self._current_pos
         else:
-            target_pos = expert_action
+            target_pos = self._prev_expert_action
         
         self._prev_expert_action = expert_action
 
@@ -184,7 +199,7 @@ class MetaworldWrapper(LLFWrapper):
             recommend_target_pos = expert_action
             recommend_target_pos[:3] += self._current_pos
         else:
-            recommend_target_pos = self.expert_action
+            recommend_target_pos = expert_action
 
         moving_away = np.linalg.norm(target_pos[:3]-previous_pos) < np.linalg.norm(target_pos[:3]-self._current_pos)
         if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
@@ -220,7 +235,7 @@ class MetaworldWrapper(LLFWrapper):
         observation = self._format_obs(observation)
         info['success'] = bool(info['success'])
         info['video'] = video if self.env._render_video else None
-        return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or reward==10, truncated, info
+        return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or reward==self.term_reward, truncated, info
     
     def _step_push_v2(self, action):
         # Run P controller until convergence or timeout
@@ -260,7 +275,7 @@ class MetaworldWrapper(LLFWrapper):
             recommend_target_pos = expert_action
             recommend_target_pos[:3] += self._current_pos
         else:
-            recommend_target_pos = self.expert_action
+            recommend_target_pos = expert_action
 
         moving_away = np.linalg.norm(target_pos[:3]-previous_pos) < np.linalg.norm(target_pos[:3]-self._current_pos)
         puck_gripped = np.linalg.norm(self._current_puck_pos - previous_puck_pos) > 0 and action[3] > 0.5
@@ -276,16 +291,142 @@ class MetaworldWrapper(LLFWrapper):
             feedback.r = self.format(r_feedback, reward=np.round(reward, 3))
         if 'hp' in feedback_type:  # moved closer to the expert goal
             if not moving_away:
-                if puck_gripped:
-                    _text_goal_pos = np.round(self._goal_pos, 3)
-                    _text_action = np.round(action, 3)
-                    _reason_goal = self.format(hp_move_to_goal_feedback, goal=_text_goal_pos, action=_text_action)
+                if self.text_with_tensor:
+                    if puck_gripped:
+                        _text_goal_pos = np.round(self._goal_pos, 3)
+                        _text_action = np.round(action, 3)
+                        _reason_goal = self.format(push_v2_prompts.hp_move_to_goal_feedback, goal=_text_goal_pos, action=_text_action)
+                    else:
+                        _text_puck_pos = np.round(self._current_puck_pos, 3)
+                        _text_action = np.round(action, 3)
+                        _reason_goal = self.format(push_v2_prompts.hp_move_to_puck_feedback, puck=_text_puck_pos, action=_text_action)
                 else:
-                    _text_puck_pos = np.round(self._current_puck_pos, 3)
-                    _text_action = np.round(action, 3)
-                    _reason_goal = self.format(hp_move_to_puck_feedback, puck=_text_puck_pos, action=_text_action)
+                    if puck_gripped:
+                        _reason_goal = self.format(push_v2_prompts.hp_move_to_goal_feedback_no_tensor)
+                    else:
+                        _reason_goal = self.format(push_v2_prompts.hp_move_to_puck_feedback_no_tensor)
+
                 _feedback = self.format(hp_feedback)
-                _feedback = _reason_goal + _feedback[0].lower() + _feedback[1:]
+                _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
+            else:
+                _feedback = None
+            if gripper_feedback is not None:
+                if _feedback is not None:
+                    _feedback += ' But, ' + gripper_feedback[0].lower() + gripper_feedback[1:]
+                else:
+                    _feedback = gripper_feedback
+            feedback.hp = _feedback
+        if 'hn' in feedback_type:  # moved away from the expert goal
+            if moving_away:
+                if self.text_with_tensor:
+                    if puck_gripped:
+                        _text_goal_pos = np.round(self._goal_pos, 3)
+                        _text_action = np.round(action, 3)
+                        _reason_goal = self.format(push_v2_prompts.hn_move_to_goal_feedback, goal=_text_goal_pos, action=_text_action)
+                    else:
+                        _text_puck_pos = np.round(self._current_puck_pos, 3)
+                        _text_action = np.round(action, 3)
+                        _reason_goal = self.format(push_v2_prompts.hn_move_to_puck_feedback, puck=_text_puck_pos, action=_text_action)
+                else:
+                    if puck_gripped:
+                        _reason_goal = self.format(push_v2_prompts.hn_move_to_goal_feedback_no_tensor)
+                    else:
+                        _reason_goal = self.format(push_v2_prompts.hn_move_to_puck_feedback_no_tensor)
+
+                _feedback = self.format(hn_feedback)
+                _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
+            else:
+                _feedback = None
+            # gripper feedback
+            if gripper_feedback is not None:
+                if _feedback is not None:
+                    _feedback += ' Also, ' + gripper_feedback[0].lower() + gripper_feedback[1:]
+                else:
+                    _feedback = gripper_feedback
+            feedback.hn = _feedback
+        if 'fp' in feedback_type:  # suggest the expert goal
+            feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(recommend_target_pos))
+        observation = self._format_obs(observation)
+        info['success'] = bool(info['success'])
+        info['video'] = video if self.env._render_video else None
+        return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or reward==self.term_reward, truncated, info
+
+    def _step_door_open_v2(self, action):
+        # Run P controller until convergence or timeout
+        # action is viewed as the desired position + grab_effort
+        previous_pos = self._current_pos  # the position of the hand before moving
+        previous_door_pos = self._current_door_pos
+
+        if self.door_initial_pos is None:
+            self.door_initial_pos = self._current_door_pos
+
+        if self.control_relative_position:
+                action = action.copy()
+                action[:3] += self._current_pos  # turn relative position to absolute position
+
+        video = []
+        for _ in range(self.p_control_time_out):
+            control = self.p_control(action)  # this controls the hand to move an absolute position
+            observation, reward, terminated, truncated, info = self.env.step(control)
+            self._current_observation = observation
+            desired_pos = action[:3]
+            video.append(self.env.render()[::-1] if self.env._render_video else None)
+            if np.abs(desired_pos - self._current_pos).max() < self.p_control_threshold:
+                break
+
+        feedback_type = self._feedback_type
+        # Some pre-computation of the feedback
+        expert_action = self.expert_action  # absolute or relative
+        if self._prev_expert_action is None:
+            self._prev_expert_action = expert_action.copy()
+        # Target pos is in absolute position
+        if self.control_relative_position:
+            target_pos = self._prev_expert_action.copy()
+            target_pos[:3] += self._current_pos
+        else:
+            target_pos = self._prev_expert_action
+
+        self._prev_expert_action = expert_action
+
+        # Compute Recommend Target
+        if self.control_relative_position:
+            recommend_target_pos = expert_action
+            recommend_target_pos[:3] += self._current_pos
+        else:
+            # remember to use expert_action instead of self.expert_action, or it'll replan cuz it's a property function
+            recommend_target_pos = expert_action
+
+        moving_away = np.linalg.norm(target_pos[:3]-previous_pos) < np.linalg.norm(target_pos[:3]-self._current_pos)
+        door_reached = np.linalg.norm((self._current_door_pos - previous_door_pos) - (self._current_pos - previous_pos)) < self.door_is_reached_threshold   
+        door_moved = np.linalg.norm(self._current_door_pos - self.door_initial_pos) > 0 and door_reached
+        if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
+            gripper_feedback = self.format(close_gripper_feedback)
+        elif target_pos[3] < 0.5 and action[3] > 0.5:  #the gripper should be open instead.
+            gripper_feedback = self.format(open_gripper_feedback)
+        else:
+            gripper_feedback = None
+        # Compute feedback
+        feedback = Feedback()
+        if 'r' in  feedback_type:
+            feedback.r = self.format(r_feedback, reward=np.round(reward, 3))
+        if 'hp' in feedback_type:  # moved closer to the expert goal
+            if not moving_away:
+                if self.text_with_tensor:
+                    _text_door_pos = np.round(self._current_door_pos, 3)
+                    _text_action = np.round(action, 3)
+                    if door_reached:
+                        assert door_moved
+                        _reason_goal = self.format(door_open_v2_prompts.hp_open_door_feedback, door=_text_door_pos, action=_text_action)
+                    else:
+                        _reason_goal = self.format(door_open_v2_prompts.hp_move_to_door_feedback, door=_text_door_pos, action=_text_action)
+                    _feedback = self.format(hp_feedback)
+                    _feedback = _reason_goal + _feedback[0].lower() + _feedback[1:]
+                else:
+                    if door_reached:
+                        assert door_moved
+                        _reason_goal = self.format(door_open_v2_prompts.hp_open_door_feedback_no_tensor)
+                    else:
+                        _reason_goal = self.format(door_open_v2_prompts.hp_move_to_door_feedback_no_tensor)
             else:
                 _feedback = None
             if gripper_feedback is not None:
@@ -296,16 +437,26 @@ class MetaworldWrapper(LLFWrapper):
             feedback.hp = _feedback
         if 'hn' in feedback_type:  # moved away from the expert goal
             if moving_away:
-                if puck_gripped:
-                    _text_goal_pos = np.round(self._goal_pos, 3)
+                if self.text_with_tensor:
+                    _text_door_pos = np.round(self._current_door_pos, 3)
                     _text_action = np.round(action, 3)
-                    _reason_goal = self.format(hn_move_to_goal_feedback, goal=_text_goal_pos, action=_text_action)
+                    if door_moved:
+                        if door_reached:
+                            _reason_goal = self.format(door_open_v2_prompts.hn_closing_door_open_door_feedback, door=_text_door_pos, action=_text_action)
+                        else:
+                            _reason_goal = self.format(door_open_v2_prompts.hn_losing_grip_open_door_feedback, door=_text_door_pos, action=_text_action)
+                    else:
+                        _reason_goal = self.format(door_open_v2_prompts.hn_move_to_door_feedback, door=_text_door_pos, action=_text_action)
+                    _feedback = self.format(hn_feedback)
+                    _feedback = _reason_goal + _feedback[0].lower() + _feedback[1:]
                 else:
-                    _text_puck_pos = np.round(self._current_puck_pos, 3)
-                    _text_action = np.round(action, 3)
-                    _reason_goal = self.format(hn_move_to_puck_feedback, puck=_text_puck_pos, action=_text_action)
-                _feedback = self.format(hn_feedback)
-                _feedback = _reason_goal + _feedback[0].lower() + _feedback[1:]
+                    if door_moved:
+                        if door_reached:
+                            _reason_goal = self.format(door_open_v2_prompts.hn_closing_door_open_door_feedback_no_tensor)
+                        else:
+                            _reason_goal = self.format(door_open_v2_prompts.hn_losing_grip_open_door_feedback_no_tensor)
+                    else:
+                        _reason_goal = self.format(door_open_v2_prompts.hn_move_to_door_feedback_no_tensor)
             else:
                 _feedback = None
             # gripper feedback
@@ -320,7 +471,7 @@ class MetaworldWrapper(LLFWrapper):
         observation = self._format_obs(observation)
         info['success'] = bool(info['success'])
         info['video'] = video if self.env._render_video else None
-        return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or reward==10, truncated, info
+        return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or reward==self.term_reward, truncated, info
 
     def _reset(self, *, seed=None, options=None):
         self._current_observation, info = self.env.reset(seed=seed, options=options)
