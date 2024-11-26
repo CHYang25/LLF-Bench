@@ -18,10 +18,11 @@ def make_env(env_name,
              instruction_type='b',
              feedback_type='a',
              visual=False,
+             seed=0
              ):
 
     """ Make the original env and wrap it with the LLFWrapper. """
-    benchmark = BENCHMARK(env_name)
+    benchmark = BENCHMARK(env_name, seed=seed) # This should pass in the seed for consistent reproduction
     env = benchmark.train_classes[env_name](render_mode=None) #'rgb_array')
     env.camera_name = 'corner2'
     class Wrapper(gym.Wrapper):

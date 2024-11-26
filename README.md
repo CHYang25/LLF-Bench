@@ -19,6 +19,12 @@ LLF Bench is a benchmark that provides a diverse collection of interactive learn
 10. [**Trademarks**](#trademarks)
 
 
+## Bug Fix:
+- There's no consistent reproduction for llfbench.metaworld. This is because it didn't pass the seed to the metaworld class during initialization. Bug is fixed at: 
+[here](./llfbench/envs/metaworld/__init__.py) line 21 and line 25.
+
+Note that other than metaworld, other environments might have the same issue, but it'll not be fixed here.
+
 ## Overview
 
 <img src="https://microsoft.github.io/LLF-Bench/images/llf-bench.png" width="750">
