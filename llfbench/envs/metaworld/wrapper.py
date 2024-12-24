@@ -4,8 +4,11 @@ from llfbench.envs.llf_env import LLFWrapper, Feedback
 from llfbench.envs.metaworld.prompts import *
 from llfbench.envs.metaworld.task_prompts import (
     push_v2_prompts,
-    door_open_v2_prompts,
 )
+from llfbench.envs.metaworld.task_prompts.degree_prompts import degree_adverb_converter
+from llfbench.envs.metaworld.task_prompts.direction_prompts import direction_converter
+from llfbench.envs.metaworld.task_prompts.conjunction_prompts import positive_conjunctions_sampler, negative_conjunctions_sampler
+from llfbench.envs.metaworld.task_prompts.recommend_prompts import recommend_templates_sampler
 from llfbench.envs.metaworld.gains import P_GAINS, TERM_REWARDS
 import metaworld
 import importlib
@@ -43,15 +46,10 @@ class MetaworldWrapper(LLFWrapper):
         self._current_observation = None
         self._prev_expert_action = None
         self.term_reward = TERM_REWARDS[self._policy_name]
-        self.text_with_tensor = False
 
         if self.env.env_name == 'push-v2':
             self._step = self._step_push_v2
             self.puck_is_gripped_threshold = 1e-3
-        elif self.env.env_name == 'door-open-v2':
-            self._step = self._step_door_open_v2
-            self.door_initial_pos = None
-            self.door_is_reached_threshold = 1e-3
         else:
             self._step = self._step_general
 
@@ -202,6 +200,13 @@ class MetaworldWrapper(LLFWrapper):
             recommend_target_pos = expert_action
 
         moving_away = np.linalg.norm(target_pos[:3]-previous_pos) < np.linalg.norm(target_pos[:3]-self._current_pos)
+        moving_away_axis = [
+            target_pos[i] - previous_pos[i] < target_pos[i] - self._current_pos[i]
+            for i in range(3)
+        ]
+        moving_away_direction = direction_converter(previous_pos - self._current_pos)
+        moving_away_degree = degree_adverb_converter(previous_pos - self._current_pos)
+
         if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
             gripper_feedback = self.format(close_gripper_feedback)
         elif target_pos[3] < 0.5 and action[3] > 0.5:  #the gripper should be open instead.
@@ -213,20 +218,34 @@ class MetaworldWrapper(LLFWrapper):
         if 'r' in  feedback_type:
             feedback.r = self.format(r_feedback, reward=reward)
         if 'hp' in feedback_type:  # moved closer to the expert goal
+            first_conjunction_used = False
             _feedback = self.format(hp_feedback) if not moving_away else None
+            if not moving_away:
+                for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
+                    if away:
+                        conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                        _feedback += conj + recommend_templates_sampler().format(degree=degree, direction=direction)
+                        first_conjunction_used = True
+            
             if gripper_feedback is not None:
                 if _feedback is not None:
-                    _feedback += 'But, ' + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                    _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
                 else:
                     _feedback = gripper_feedback
             feedback.hp = _feedback
         if 'hn' in feedback_type:  # moved away from the expert goal
             # position feedback
             _feedback = self.format(hn_feedback) if moving_away else None
+            if moving_away:
+                for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
+                    if away:
+                        _feedback += positive_conjunctions_sampler() + recommend_templates_sampler().format(degree=degree, direction=direction)
+
             # gripper feedback
             if gripper_feedback is not None:
                 if _feedback is not None:
-                    _feedback += 'Also, ' + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
                 else:
                     _feedback = gripper_feedback
             feedback.hn = _feedback
@@ -277,7 +296,15 @@ class MetaworldWrapper(LLFWrapper):
         else:
             recommend_target_pos = expert_action
 
+        # moving away metrics
         moving_away = np.linalg.norm(target_pos[:3]-previous_pos) < np.linalg.norm(target_pos[:3]-self._current_pos)
+        moving_away_axis = [
+            target_pos[i] - previous_pos[i] < target_pos[i] - self._current_pos[i]
+            for i in range(3)
+        ]
+        moving_away_direction = direction_converter(previous_pos - self._current_pos)
+        moving_away_degree = degree_adverb_converter(previous_pos - self._current_pos)
+
         puck_gripped = np.linalg.norm(self._current_puck_pos - previous_puck_pos) > 0 and action[3] > 0.5
         if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
             gripper_feedback = self.format(close_gripper_feedback)
@@ -290,183 +317,56 @@ class MetaworldWrapper(LLFWrapper):
         if 'r' in  feedback_type:
             feedback.r = self.format(r_feedback, reward=np.round(reward, 3))
         if 'hp' in feedback_type:  # moved closer to the expert goal
+            first_conjunction_used = False
             if not moving_away:
-                if self.text_with_tensor:
-                    if puck_gripped:
-                        _text_goal_pos = np.round(self._goal_pos, 3)
-                        _text_action = np.round(action, 3)
-                        _reason_goal = self.format(push_v2_prompts.hp_move_to_goal_feedback, goal=_text_goal_pos, action=_text_action)
-                    else:
-                        _text_puck_pos = np.round(self._current_puck_pos, 3)
-                        _text_action = np.round(action, 3)
-                        _reason_goal = self.format(push_v2_prompts.hp_move_to_puck_feedback, puck=_text_puck_pos, action=_text_action)
+                if puck_gripped:
+                    _reason_goal = self.format(push_v2_prompts.hp_move_to_goal_feedback_no_tensor)
                 else:
-                    if puck_gripped:
-                        _reason_goal = self.format(push_v2_prompts.hp_move_to_goal_feedback_no_tensor)
-                    else:
-                        _reason_goal = self.format(push_v2_prompts.hp_move_to_puck_feedback_no_tensor)
-
-                _feedback = self.format(hp_feedback)
-                _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
+                    _reason_goal = self.format(push_v2_prompts.hp_move_to_puck_feedback_no_tensor)
+                # _feedback = self.format(hp_feedback)
+                # _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
+                _feedback = _reason_goal
+                
+                for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
+                    if away:
+                        conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                        _feedback += conj + recommend_templates_sampler().format(degree=degree, direction=direction)
+                        first_conjunction_used = True
             else:
                 _feedback = None
+
             if gripper_feedback is not None:
                 if _feedback is not None:
-                    _feedback += ' But, ' + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                    _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
                 else:
                     _feedback = gripper_feedback
             feedback.hp = _feedback
         if 'hn' in feedback_type:  # moved away from the expert goal
             if moving_away:
-                if self.text_with_tensor:
-                    if puck_gripped:
-                        _text_goal_pos = np.round(self._goal_pos, 3)
-                        _text_action = np.round(action, 3)
-                        _reason_goal = self.format(push_v2_prompts.hn_move_to_goal_feedback, goal=_text_goal_pos, action=_text_action)
-                    else:
-                        _text_puck_pos = np.round(self._current_puck_pos, 3)
-                        _text_action = np.round(action, 3)
-                        _reason_goal = self.format(push_v2_prompts.hn_move_to_puck_feedback, puck=_text_puck_pos, action=_text_action)
+                if puck_gripped:
+                    _reason_goal = self.format(push_v2_prompts.hn_move_to_goal_feedback_no_tensor)
                 else:
-                    if puck_gripped:
-                        _reason_goal = self.format(push_v2_prompts.hn_move_to_goal_feedback_no_tensor)
-                    else:
-                        _reason_goal = self.format(push_v2_prompts.hn_move_to_puck_feedback_no_tensor)
+                    _reason_goal = self.format(push_v2_prompts.hn_move_to_puck_feedback_no_tensor)
+                # _feedback = self.format(hn_feedback)
+                # _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
+                _feedback = _reason_goal
 
-                _feedback = self.format(hn_feedback)
-                _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
+                for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
+                    if away:
+                        _feedback += positive_conjunctions_sampler() + recommend_templates_sampler().format(degree=degree, direction=direction)
             else:
                 _feedback = None
+
             # gripper feedback
             if gripper_feedback is not None:
                 if _feedback is not None:
-                    _feedback += ' Also, ' + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
                 else:
                     _feedback = gripper_feedback
             feedback.hn = _feedback
-        if 'fp' in feedback_type:  # suggest the expert goal
-            feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(recommend_target_pos))
-        observation = self._format_obs(observation)
-        info['success'] = bool(info['success'])
-        info['video'] = video if self.env._render_video else None
-        return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or reward==self.term_reward, truncated, info
-
-    def _step_door_open_v2(self, action):
-        # Run P controller until convergence or timeout
-        # action is viewed as the desired position + grab_effort
-        previous_pos = self._current_pos  # the position of the hand before moving
-        previous_door_pos = self._current_door_pos
-
-        if self.door_initial_pos is None:
-            self.door_initial_pos = self._current_door_pos
-
-        if self.control_relative_position:
-                action = action.copy()
-                action[:3] += self._current_pos  # turn relative position to absolute position
-
-        video = []
-        for _ in range(self.p_control_time_out):
-            control = self.p_control(action)  # this controls the hand to move an absolute position
-            observation, reward, terminated, truncated, info = self.env.step(control)
-            self._current_observation = observation
-            desired_pos = action[:3]
-            video.append(self.env.render()[::-1] if self.env._render_video else None)
-            if np.abs(desired_pos - self._current_pos).max() < self.p_control_threshold:
-                break
-
-        feedback_type = self._feedback_type
-        # Some pre-computation of the feedback
-        expert_action = self.expert_action  # absolute or relative
-        if self._prev_expert_action is None:
-            self._prev_expert_action = expert_action.copy()
-        # Target pos is in absolute position
-        if self.control_relative_position:
-            target_pos = self._prev_expert_action.copy()
-            target_pos[:3] += self._current_pos
-        else:
-            target_pos = self._prev_expert_action
-
-        self._prev_expert_action = expert_action
-
-        # Compute Recommend Target
-        if self.control_relative_position:
-            recommend_target_pos = expert_action
-            recommend_target_pos[:3] += self._current_pos
-        else:
-            # remember to use expert_action instead of self.expert_action, or it'll replan cuz it's a property function
-            recommend_target_pos = expert_action
-
-        moving_away = np.linalg.norm(target_pos[:3]-previous_pos) < np.linalg.norm(target_pos[:3]-self._current_pos)
-        door_reached = np.linalg.norm((self._current_door_pos - previous_door_pos) - (self._current_pos - previous_pos)) < self.door_is_reached_threshold   
-        door_moved = np.linalg.norm(self._current_door_pos - self.door_initial_pos) > 0 and door_reached
-        if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
-            gripper_feedback = self.format(close_gripper_feedback)
-        elif target_pos[3] < 0.5 and action[3] > 0.5:  #the gripper should be open instead.
-            gripper_feedback = self.format(open_gripper_feedback)
-        else:
-            gripper_feedback = None
-        # Compute feedback
-        feedback = Feedback()
-        if 'r' in  feedback_type:
-            feedback.r = self.format(r_feedback, reward=np.round(reward, 3))
-        if 'hp' in feedback_type:  # moved closer to the expert goal
-            if not moving_away:
-                if self.text_with_tensor:
-                    _text_door_pos = np.round(self._current_door_pos, 3)
-                    _text_action = np.round(action, 3)
-                    if door_reached:
-                        assert door_moved
-                        _reason_goal = self.format(door_open_v2_prompts.hp_open_door_feedback, door=_text_door_pos, action=_text_action)
-                    else:
-                        _reason_goal = self.format(door_open_v2_prompts.hp_move_to_door_feedback, door=_text_door_pos, action=_text_action)
-                    _feedback = self.format(hp_feedback)
-                    _feedback = _reason_goal + _feedback[0].lower() + _feedback[1:]
-                else:
-                    if door_reached:
-                        assert door_moved
-                        _reason_goal = self.format(door_open_v2_prompts.hp_open_door_feedback_no_tensor)
-                    else:
-                        _reason_goal = self.format(door_open_v2_prompts.hp_move_to_door_feedback_no_tensor)
-            else:
-                _feedback = None
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    _feedback += 'But, ' + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
-            feedback.hp = _feedback
-        if 'hn' in feedback_type:  # moved away from the expert goal
-            if moving_away:
-                if self.text_with_tensor:
-                    _text_door_pos = np.round(self._current_door_pos, 3)
-                    _text_action = np.round(action, 3)
-                    if door_moved:
-                        if door_reached:
-                            _reason_goal = self.format(door_open_v2_prompts.hn_closing_door_open_door_feedback, door=_text_door_pos, action=_text_action)
-                        else:
-                            _reason_goal = self.format(door_open_v2_prompts.hn_losing_grip_open_door_feedback, door=_text_door_pos, action=_text_action)
-                    else:
-                        _reason_goal = self.format(door_open_v2_prompts.hn_move_to_door_feedback, door=_text_door_pos, action=_text_action)
-                    _feedback = self.format(hn_feedback)
-                    _feedback = _reason_goal + _feedback[0].lower() + _feedback[1:]
-                else:
-                    if door_moved:
-                        if door_reached:
-                            _reason_goal = self.format(door_open_v2_prompts.hn_closing_door_open_door_feedback_no_tensor)
-                        else:
-                            _reason_goal = self.format(door_open_v2_prompts.hn_losing_grip_open_door_feedback_no_tensor)
-                    else:
-                        _reason_goal = self.format(door_open_v2_prompts.hn_move_to_door_feedback_no_tensor)
-            else:
-                _feedback = None
-            # gripper feedback
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    _feedback += 'Also, ' + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
-            feedback.hn = _feedback
-        if 'fp' in feedback_type:  # suggest the expert goal
+        if 'fp' in feedback_type:  
+            # suggest the expert goal
             feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(recommend_target_pos))
         observation = self._format_obs(observation)
         info['success'] = bool(info['success'])
@@ -494,7 +394,7 @@ class MetaworldWrapper(LLFWrapper):
         # f"delta x: {action[0]:.2f}, delta y:{action[1]:.2f}, delta z:{action[2]:.2f}, gripper state:{action[3]:.1f}"
         # or another action text format if the action isn't a delta.
         # TODO should not be the raw action
-        return np.array2string(action, precision=2)
+        return np.array2string(action)
 
     def textualize_observation(self, observation):
         """ Parse np.ndarray observation into text. """
@@ -506,7 +406,7 @@ class MetaworldWrapper(LLFWrapper):
         # convert np.ndarray to list
         for k,v in obs_dict.items():
             if isinstance(v, np.ndarray):
-                obs_dict[k] = np.array2string(v, precision=3)
+                obs_dict[k] = np.array2string(v)
             else: # it's a scalar
                 obs_dict[k] = f"{v:.3f}"
         observation_text = json.dumps(obs_dict)
