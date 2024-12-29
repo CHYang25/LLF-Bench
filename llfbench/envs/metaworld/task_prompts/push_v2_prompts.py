@@ -71,7 +71,7 @@
 # )
 
 # No tensor included
-hp_move_to_puck_feedback_no_tensor = (
+hp_move_to_puck_feedback = (
     "You should move to the puck. The action is helpful based on the state.",
     "Approaching the puck is necessary. This action aligns with the current state.",
     "Moving toward the puck is the correct step. The state supports this decision.",
@@ -84,7 +84,7 @@ hp_move_to_puck_feedback_no_tensor = (
     "Moving closer to the puck is important. The state supports this choice."
 )
 
-hp_move_to_goal_feedback_no_tensor = (
+hp_move_to_goal_feedback = (
     "You should now move to the goal. The action is helpful based on the state.",
     "Approaching the goal is necessary. This action aligns with the current state.",
     "Moving toward the goal is the correct step. The state supports this decision.",
@@ -97,7 +97,7 @@ hp_move_to_goal_feedback_no_tensor = (
     "Moving closer to the goal is important. The state supports this choice."
 )
 
-hn_move_to_puck_feedback_no_tensor = (
+hn_move_to_puck_feedback = (
     "You should now move to the puck. However, based on the state, the action is not helping.",
     "Approaching the puck is necessary. Yet, the action is ineffective based on the state.",
     "Moving toward the puck is the correct step. However, the state shows this action is unhelpful.",
@@ -110,7 +110,7 @@ hn_move_to_puck_feedback_no_tensor = (
     "Moving closer to the puck is important. Yet, the state reveals this choice is unproductive."
 )
 
-hn_move_to_goal_feedback_no_tensor = (
+hn_move_to_goal_feedback = (
     "You should now move to the goal. However, based on the state, the action is not helping.",
     "Approaching the goal is necessary. Yet, the action is ineffective based on the state.",
     "Moving toward the goal is the correct step. However, the state shows this action is unhelpful.",
