@@ -1,12 +1,13 @@
 import gymnasium as gym
 import mani_skill.envs
+import mani_skill.examples.motionplanning.panda as panda
 from PIL import Image
 import torch
 import numpy as np
 
 # Tasks could be find here: https://maniskill.readthedocs.io/en/latest/tasks/index.html
 env = gym.make(
-    "PushCube-v1", # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
+    "PushT-v1", # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
     num_envs=1,
     obs_mode="state", # there is also "state_dict", "rgbd", ...
     control_mode="pd_ee_delta_pose", # there is also "pd_joint_delta_pos", ...

@@ -1,8 +1,8 @@
 from llfbench import envs
 import gymnasium as gym
 
-def make(env_name, *, instruction_type='b', feedback_type='a', visual=False, seed=0):
-    env = gym.make(env_name, instruction_type=instruction_type, feedback_type=feedback_type, visual=visual, seed=seed)
+def make(env_name, *, instruction_type='b', feedback_type='a', visual=False, seed=0, warning=True):
+    env = gym.make(env_name, instruction_type=instruction_type, feedback_type=feedback_type, visual=visual, seed=seed, warning=warning)
     return env
 
 def supported_types(env_name):

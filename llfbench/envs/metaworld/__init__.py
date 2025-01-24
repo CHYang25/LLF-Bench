@@ -1,4 +1,5 @@
 import gymnasium as gym
+import warnings
 from gymnasium.envs.registration import register
 from llfbench.utils import generate_combinations_dict
 from llfbench.envs.metaworld.wrapper import MetaworldWrapper
@@ -18,7 +19,8 @@ def make_env(env_name,
              instruction_type='b',
              feedback_type='a',
              visual=False,
-             seed=0
+             seed=0,
+             warning=True,
              ):
 
     """ Make the original env and wrap it with the LLFWrapper. """
@@ -52,7 +54,13 @@ def make_env(env_name,
             task = random.choice(benchmark.train_tasks)
             self.env.set_task(task)
             return self.env.reset(seed=seed, options=options)
+        
     env = Wrapper(env)
+
+    if not warning:
+        gym.logger.set_level(gym.logger.ERROR)
+        warnings.filterwarnings("ignore")
+
     return TimeLimit(MetaworldWrapper(env, instruction_type=instruction_type, feedback_type=feedback_type), max_episode_steps=30)
 
 
@@ -61,5 +69,5 @@ for env_name in ENVIRONMENTS:
     register(
         id=f"llf-metaworld-{env_name}",
         entry_point='llfbench.envs.metaworld:make_env',
-        kwargs=dict(env_name=env_name, feedback_type='a', instruction_type='b', visual=False)
+        kwargs=dict(env_name=env_name, feedback_type='a', instruction_type='b', visual=False, seed=0, warning=True)
     )
