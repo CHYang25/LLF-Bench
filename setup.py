@@ -34,7 +34,7 @@ setuptools.setup(
         'metaworld': ['metaworld@git+https://github.com/Farama-Foundation/Metaworld.git@c822f28#egg=metaworld'],
         'alfworld': [ 'alfworld>=0.3.0' ],
         'maniskill': [ 'mani_skill==3.0.0b12' ],
-        'block_pushing': [ 
+        'blockpushing': [ 
             'pybullet==3.2.6', 
             'tf-agents==0.19.0', 
             'typing-extensions==4.12.2',
