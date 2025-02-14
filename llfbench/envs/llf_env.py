@@ -129,7 +129,8 @@ class LLFWrapper(gym.Wrapper):
         self.set_instruction_type(instruction_type) # This is the external api.
         self.set_feedback_type(feedback_type)  # This is the external api.
         self.set_paraphrase_method('random')
-        self.observation_space = gym.spaces.Dict({"observation": self.env.observation_space,
+        self.orig_observation_space = self.env.observation_space
+        self.observation_space = gym.spaces.Dict({"observation": gym.spaces.Text(sys.maxsize, charset=string.printable),
                                                   "feedback": gym.spaces.Text(sys.maxsize, charset=string.printable),
                                                   "instruction": gym.spaces.Text(sys.maxsize, charset=string.printable)})
 
