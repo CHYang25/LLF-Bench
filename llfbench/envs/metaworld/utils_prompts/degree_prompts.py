@@ -15,17 +15,17 @@ def degree_adverb_converter(difference: np.array):
     for value in difference:
         value = abs(value)
 
-        if value >= 0 and value < 1e-3:
+        if value >= 0 and value < 1e-2:
             desc = random.choice(degree_adverbs["very_low"])
-        elif value >= 1e-3 and value < 1e-2:
+        elif value >= 1e-2 and value < 3e-2:
             desc = random.choice(degree_adverbs["low"])
-        elif value >= 1e-2 and value < 1e-1:
+        elif value >= 3e-2 and value < 5e-2:
             desc = random.choice(degree_adverbs["medium"])
-        elif value >= 1e-1 and value < 1:
+        elif value >= 5e-2 and value < 8e-2:
             desc = random.choice(degree_adverbs["high"])
-        elif value >= 1 and value < 10:
+        elif value >= 8e-2 and value < 1e-1:
             desc = random.choice(degree_adverbs["very_high"])
-        elif value >= 10:
+        elif value >= 1e-1:
             desc = random.choice(degree_adverbs["highest"])
         
         degrees.append(desc)

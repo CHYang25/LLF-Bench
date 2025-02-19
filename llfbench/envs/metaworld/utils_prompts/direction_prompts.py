@@ -18,8 +18,8 @@ direction_desc_dict = {
 
 direction_desc_list = [
     [
-        ["rightward", "to the right", "toward the right"], 
-        ["leftward", "to the left", "toward the left"]
+        ["leftward", "to the left", "toward the left"],
+        ["rightward", "to the right", "toward the right"] 
     ],
     [        
         ["forward", "to the front", "ahead", "toward the front"],
