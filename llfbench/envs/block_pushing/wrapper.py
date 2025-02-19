@@ -31,7 +31,6 @@ class BlockPushingWrapper(LLFWrapper):
         else:
             raise ValueError(f"The current environment {self.env.env_name} is not supported.")
         
-        self.observation_space = spaces.Text(sys.maxsize, charset=string.printable)
         self._policy = getattr(module, self._policy_name)(self.env)
         self._current_time_step = None
         self._prev_expert_action = None
