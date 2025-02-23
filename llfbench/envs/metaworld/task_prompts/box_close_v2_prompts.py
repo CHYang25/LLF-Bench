@@ -1,3 +1,16 @@
+hp_move_to_lid_feedback = (
+    "You should fetch the lid. This action fits well.",
+    "Fetch the lid now. The action works nicely.",
+    "You can get the lid. This action helps a lot.",
+    "Move to the lid. The action suits it fine.",
+    "You should reach the lid. This action fits perfectly.",
+    "Try fetching the lid. The action works great.",
+    "Go to the lid. This action matches well.",
+    "You can fetch the lid. The action helps nicely.",
+    "Head to the lid. This action fits just right.",
+    "Reach for the lid. The action is really good.",
+)
+
 hp_lift_up_lid_feedback = (
     "You should lift the lid. This action fits well.",
     "Lift the lid now. The action helps nicely.",
@@ -22,19 +35,6 @@ hp_move_to_box_feedback = (
     "You can move to the box. The action works nicely.",
     "Reach for the box. This action fits just right.",
     "Move toward the box. The action is really good.",
-)
-
-hn_move_to_lid_feedback = (
-    "You should fetch the lid. This action doesn’t fit well.",
-    "Fetch the lid now. The action isn’t helpful.",
-    "You can get the lid. This action doesn’t work nicely.",
-    "Move to the lid. The action fails to suit.",
-    "You should reach the lid. This action isn’t good.",
-    "Try fetching the lid. The action doesn’t match well.",
-    "Go to the lid. This action fails badly.",
-    "You can fetch the lid. The action isn’t useful.",
-    "Head to the lid. This action doesn’t help much.",
-    "Reach for the lid. The action fits poorly.",
 )
 
 hn_move_to_lid_feedback = (
