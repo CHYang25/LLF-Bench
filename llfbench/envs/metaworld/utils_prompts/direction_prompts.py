@@ -7,8 +7,8 @@ direction_desc_dict = {
         "neg": ["leftward", "to the left", "toward the left"]
     },
     "y-axis": {
-        "pos": ["forward", "to the front", "ahead", "toward the front"],
-        "neg": ["backward", "to the back", "behind", "toward the back"]
+        "pos": ["forward", "to the front", "toward the front"],
+        "neg": ["backward", "to the back", "toward the back"]
     },
     "z-axis": {
         "pos": ["upward", "up", "to the top"],
@@ -22,8 +22,8 @@ direction_desc_list = [
         ["rightward", "to the right", "toward the right"] 
     ],
     [        
-        ["forward", "to the front", "ahead", "toward the front"],
-        ["backward", "to the back", "behind", "toward the back"]
+        ["forward", "to the front", "toward the front"],
+        ["backward", "to the back", "toward the back"]
     ],
     [
         ["upward", "up", "to the top"], 
