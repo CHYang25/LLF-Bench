@@ -171,7 +171,7 @@ class BlockPushingWrapper(LLFWrapper):
         num_reached_target_blocks = self.num_reached_target_blocks
         current_block_to_reach_reached = np.linalg.norm(
             self.current_observation[f"{self._current_block_to_reach}_translation"] - self._current_effector_translation
-        ) < self.bp_policy.block_effector_dist_tolerance
+        ) < self.bp_policy.block_effector_dist_tolerance*1.2
         current_target_to_reach_reached = np.linalg.norm(
             self.current_observation[f"{self._current_target_to_reach}_translation"] - self.current_observation[f"{self._current_block_to_reach}_translation"]
         ) < self.bp_policy.goal_dist_tolerance
