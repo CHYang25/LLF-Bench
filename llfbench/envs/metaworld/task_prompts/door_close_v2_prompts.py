@@ -38,14 +38,14 @@ hn_move_to_door_feedback = (
 )
 
 hn_move_to_goal_feedback = (
-    "You should now move to the goal. However, the action is not helpful in this state.",
-    "Moving to the goal is suggested. Yet, it does not improve the current state.",
-    "Proceeding to the goal is advised. However, the action is ineffective in this situation.",
-    "Heading toward the goal is logical. Yet, the action does not benefit the state.",
-    "You ought to approach the goal. However, the action is not productive in this case.",
-    "Reaching for the goal is recommended. Yet, it does not align with the current state.",
-    "Advancing to the goal is appropriate. However, the action is unhelpful in this context.",
-    "You should move to the goal. Yet, the action fails to support the current circumstances.",
-    "Going to the goal is encouraged. However, it is not aiding the current situation.",
-    "It is suggested to move toward the goal. Yet, the action is not effective here.",
+    "You should move to the goal. The action is not helpful.",
+    "Move to the goal now. The action is not helpful.",
+    "You can go to the goal. This action is not working.",
+    "Head to the goal. The action is not benefitial.",
+    "You should move to the goal. This action is not helping.",
+    "Head to the goal. This action is not working.",
+    "Move to the goal. This action is not effective.",
+    "You should head to the goal. This action is not benefitial.",
+    "Go to the goal. This action is not working.",
+    "You can get to the goal. The action is not benefitial.",
 )

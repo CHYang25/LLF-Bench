@@ -59,11 +59,13 @@ class MetaworldWrapper(LLFWrapper):
             self.initial_door_pos = None
         elif self.env.env_name == 'push-v2':
             self._step = self._step_push_v2
-            # self.puck_is_gripped_threshold = 1e-3
+            self.puck_is_gripped_threshold = 1e-1
         elif self.env.env_name == 'push-back-v2':
             self._step = self._step_push_back_v2
+            self.puck_is_gripped_threshold = 1e-1
         elif self.env.env_name == 'sweep-v2':
             self._step = self._step_sweep_v2
+            self.cube_is_gripped_threshold = 1e-1
         else:
             self._step = self._step_general
 
@@ -230,8 +232,8 @@ class MetaworldWrapper(LLFWrapper):
             target_pos[i] - previous_pos[i] < target_pos[i] - self._current_pos[i]
             for i in range(3)
         ]
-        moving_away_direction = direction_converter(previous_pos - self._current_pos)
-        moving_away_degree = degree_adverb_converter(previous_pos - self._current_pos)
+        moving_away_direction = direction_converter(target_pos[:3] - self._current_pos)
+        moving_away_degree = degree_adverb_converter(target_pos[:3] - self._current_pos)
 
         if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
             gripper_feedback = self.format(close_gripper_feedback)
@@ -253,12 +255,13 @@ class MetaworldWrapper(LLFWrapper):
                         _feedback += conj + recommend_templates_sampler().format(degree=degree, direction=direction)
                         first_conjunction_used = True
             
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
-                    _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                        _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
+
             feedback.hp = _feedback
         if 'hn' in feedback_type:  # moved away from the expert goal
             # position feedback
@@ -268,12 +271,13 @@ class MetaworldWrapper(LLFWrapper):
                     if away:
                         _feedback += positive_conjunctions_sampler() + recommend_templates_sampler().format(degree=degree, direction=direction)
 
-            # gripper feedback
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
+                # gripper feedback
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
+
             feedback.hn = _feedback
         if 'fp' in feedback_type:  # suggest the expert goal
             feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(recommend_target_pos))
@@ -329,8 +333,8 @@ class MetaworldWrapper(LLFWrapper):
             target_pos[i] - previous_pos[i] < target_pos[i] - self._current_pos[i]
             for i in range(3)
         ]
-        moving_away_direction = direction_converter(previous_pos - self._current_pos)
-        moving_away_degree = degree_adverb_converter(previous_pos - self._current_pos)
+        moving_away_direction = direction_converter(target_pos[:3] - self._current_pos)
+        moving_away_degree = degree_adverb_converter(target_pos[:3] - self._current_pos)
 
         lid_gripped = np.linalg.norm(self._current_lid_pos - self._current_pos) < self.lid_gripped_threshold\
                         and np.linalg.norm(self._current_lid_pos - self.initial_lid_pos) > 0\
@@ -365,15 +369,16 @@ class MetaworldWrapper(LLFWrapper):
                         conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
                         _feedback += conj + recommend_templates_sampler().format(degree=degree, direction=direction)
                         first_conjunction_used = True
+
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                        _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
             else:
                 _feedback = None
 
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
-                    _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
             feedback.hp = _feedback 
         if 'hn' in feedback_type:  # moved away from the expert goal
             # position feedback
@@ -390,15 +395,16 @@ class MetaworldWrapper(LLFWrapper):
                 for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
                     if away:
                         _feedback += positive_conjunctions_sampler() + recommend_templates_sampler().format(degree=degree, direction=direction)
+            
+                # gripper feedback
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
             else:
                 _feedback = None
 
-            # gripper feedback
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
             feedback.hn = _feedback
         if 'fp' in feedback_type:  # suggest the expert goal
             feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(recommend_target_pos))
@@ -455,8 +461,8 @@ class MetaworldWrapper(LLFWrapper):
             target_pos[i] - previous_pos[i] < target_pos[i] - self._current_pos[i]
             for i in range(3)
         ]
-        moving_away_direction = direction_converter(previous_pos - self._current_pos)
-        moving_away_degree = degree_adverb_converter(previous_pos - self._current_pos)
+        moving_away_direction = direction_converter(target_pos[:3] - self._current_pos)
+        moving_away_degree = degree_adverb_converter(target_pos[:3] - self._current_pos)
 
         door_reached = np.linalg.norm(self._current_door_pos - self.initial_door_pos) > self.door_is_moved_threshold
         if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
@@ -476,8 +482,7 @@ class MetaworldWrapper(LLFWrapper):
                     _reason_goal = self.format(door_close_v2_prompts.hp_move_to_goal_feedback)
                 else:
                     _reason_goal = self.format(door_close_v2_prompts.hp_move_to_door_feedback)
-                # _feedback = self.format(hp_feedback)
-                # _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
+
                 _feedback = _reason_goal
                 
                 for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
@@ -485,15 +490,16 @@ class MetaworldWrapper(LLFWrapper):
                         conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
                         _feedback += conj + recommend_templates_sampler().format(degree=degree, direction=direction)
                         first_conjunction_used = True
+            
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                        _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
             else:
                 _feedback = None
 
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
-                    _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
             feedback.hp = _feedback
         if 'hn' in feedback_type:  # moved away from the expert goal
             if moving_away:
@@ -501,22 +507,22 @@ class MetaworldWrapper(LLFWrapper):
                     _reason_goal = self.format(door_close_v2_prompts.hn_move_to_goal_feedback)
                 else:
                     _reason_goal = self.format(door_close_v2_prompts.hn_move_to_door_feedback)
-                # _feedback = self.format(hn_feedback)
-                # _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
+
                 _feedback = _reason_goal
 
                 for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
                     if away:
                         _feedback += positive_conjunctions_sampler() + recommend_templates_sampler().format(degree=degree, direction=direction)
+            
+                # gripper feedback
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
             else:
                 _feedback = None
 
-            # gripper feedback
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
             feedback.hn = _feedback
         if 'fp' in feedback_type:  
             # suggest the expert goal
@@ -572,10 +578,12 @@ class MetaworldWrapper(LLFWrapper):
             target_pos[i] - previous_pos[i] < target_pos[i] - self._current_pos[i]
             for i in range(3)
         ]
-        moving_away_direction = direction_converter(previous_pos - self._current_pos)
-        moving_away_degree = degree_adverb_converter(previous_pos - self._current_pos)
+        moving_away_direction = direction_converter(target_pos[:3] - self._current_pos)
+        moving_away_degree = degree_adverb_converter(target_pos[:3] - self._current_pos)
 
-        puck_gripped = np.linalg.norm(self._current_puck_pos - previous_puck_pos) > 0 and action[3] > 0.5
+        puck_gripped = np.linalg.norm(self._current_puck_pos - previous_puck_pos) > 0 \
+                        and np.linalg.norm(self._current_puck_pos - self._current_pos) < self.puck_is_gripped_threshold \
+                            and action[3] > 0.5
         if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
             gripper_feedback = self.format(close_gripper_feedback)
         elif target_pos[3] < 0.5 and action[3] > 0.5:  #the gripper should be open instead.
@@ -602,15 +610,18 @@ class MetaworldWrapper(LLFWrapper):
                         conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
                         _feedback += conj + recommend_templates_sampler().format(degree=degree, direction=direction)
                         first_conjunction_used = True
+
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                        _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
+
+                # _feedback += f"target: {target_pos[:3]}, cur: {self._current_pos}, puck: {self._current_puck_pos}, goal: {self._goal_pos}."
             else:
                 _feedback = None
 
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
-                    _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
             feedback.hp = _feedback
         if 'hn' in feedback_type:  # moved away from the expert goal
             if moving_away:
@@ -625,15 +636,18 @@ class MetaworldWrapper(LLFWrapper):
                 for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
                     if away:
                         _feedback += positive_conjunctions_sampler() + recommend_templates_sampler().format(degree=degree, direction=direction)
+
+                # gripper feedback
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
+
+                # _feedback += f"target: {target_pos[:3]}, cur: {self._current_pos}, puck: {self._current_puck_pos}, goal: {self._goal_pos}."
             else:
                 _feedback = None
 
-            # gripper feedback
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
             feedback.hn = _feedback
         if 'fp' in feedback_type:  
             # suggest the expert goal
@@ -689,10 +703,12 @@ class MetaworldWrapper(LLFWrapper):
             target_pos[i] - previous_pos[i] < target_pos[i] - self._current_pos[i]
             for i in range(3)
         ]
-        moving_away_direction = direction_converter(previous_pos - self._current_pos)
-        moving_away_degree = degree_adverb_converter(previous_pos - self._current_pos)
+        moving_away_direction = direction_converter(target_pos[:3] - self._current_pos)
+        moving_away_degree = degree_adverb_converter(target_pos[:3] - self._current_pos)
 
-        puck_gripped = np.linalg.norm(self._current_puck_pos - previous_puck_pos) > 0 and action[3] > 0.5
+        puck_gripped = np.linalg.norm(self._current_puck_pos - previous_puck_pos) > 0 \
+                        and np.linalg.norm(self._current_puck_pos - self._current_pos) < self.puck_is_gripped_threshold \
+                            and action[3] > 0.5
         if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
             gripper_feedback = self.format(close_gripper_feedback)
         elif target_pos[3] < 0.5 and action[3] > 0.5:  #the gripper should be open instead.
@@ -719,15 +735,16 @@ class MetaworldWrapper(LLFWrapper):
                         conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
                         _feedback += conj + recommend_templates_sampler().format(degree=degree, direction=direction)
                         first_conjunction_used = True
+            
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                        _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
             else:
                 _feedback = None
 
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
-                    _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
             feedback.hp = _feedback
         if 'hn' in feedback_type:  # moved away from the expert goal
             if moving_away:
@@ -742,15 +759,16 @@ class MetaworldWrapper(LLFWrapper):
                 for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
                     if away:
                         _feedback += positive_conjunctions_sampler() + recommend_templates_sampler().format(degree=degree, direction=direction)
+            
+                # gripper feedback
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
             else:
                 _feedback = None
 
-            # gripper feedback
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
             feedback.hn = _feedback
         if 'fp' in feedback_type:  
             # suggest the expert goal
@@ -806,10 +824,12 @@ class MetaworldWrapper(LLFWrapper):
             target_pos[i] - previous_pos[i] < target_pos[i] - self._current_pos[i]
             for i in range(3)
         ]
-        moving_away_direction = direction_converter(previous_pos - self._current_pos) #FIXME: should be target - previous
-        moving_away_degree = degree_adverb_converter(previous_pos - self._current_pos)
+        moving_away_direction = direction_converter(target_pos[:3] - self._current_pos) #FIXME: should be target - previous
+        moving_away_degree = degree_adverb_converter(target_pos[:3] - self._current_pos)
 
-        cube_gripped = np.linalg.norm(self._current_cube_pos - previous_cube_pos) > 0 and action[3] > 0.5
+        cube_gripped = np.linalg.norm(self._current_cube_pos - previous_cube_pos) > 0 \
+                        and np.linalg.norm(self._current_cube_pos - self._current_pos) < self.cube_is_gripped_threshold \
+                            and action[3] > 0.5
         if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
             gripper_feedback = self.format(close_gripper_feedback)
         elif target_pos[3] < 0.5 and action[3] > 0.5:  #the gripper should be open instead.
@@ -836,15 +856,16 @@ class MetaworldWrapper(LLFWrapper):
                         conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
                         _feedback += conj + recommend_templates_sampler().format(degree=degree, direction=direction)
                         first_conjunction_used = True
+            
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                        _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
             else:
                 _feedback = None
 
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
-                    _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
             feedback.hp = _feedback
         if 'hn' in feedback_type:  # moved away from the expert goal
             if moving_away:
@@ -859,15 +880,16 @@ class MetaworldWrapper(LLFWrapper):
                 for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
                     if away:
                         _feedback += positive_conjunctions_sampler() + recommend_templates_sampler().format(degree=degree, direction=direction)
+                
+                # gripper feedback
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
             else:
                 _feedback = None
 
-            # gripper feedback
-            if gripper_feedback is not None:
-                if _feedback is not None:
-                    _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
-                else:
-                    _feedback = gripper_feedback
             feedback.hn = _feedback
         if 'fp' in feedback_type:  
             # suggest the expert goal

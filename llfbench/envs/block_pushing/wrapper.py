@@ -31,7 +31,6 @@ class BlockPushingWrapper(LLFWrapper):
         else:
             raise ValueError(f"The current environment {self.env.env_name} is not supported.")
         
-        self.observation_space = spaces.Text(sys.maxsize, charset=string.printable)
         self._policy = getattr(module, self._policy_name)(self.env)
         self._current_time_step = None
         self._prev_expert_action = None
@@ -172,7 +171,7 @@ class BlockPushingWrapper(LLFWrapper):
         num_reached_target_blocks = self.num_reached_target_blocks
         current_block_to_reach_reached = np.linalg.norm(
             self.current_observation[f"{self._current_block_to_reach}_translation"] - self._current_effector_translation
-        ) < self.bp_policy.block_effector_dist_tolerance
+        ) < self.bp_policy.block_effector_dist_tolerance*1.2
         current_target_to_reach_reached = np.linalg.norm(
             self.current_observation[f"{self._current_target_to_reach}_translation"] - self.current_observation[f"{self._current_block_to_reach}_translation"]
         ) < self.bp_policy.goal_dist_tolerance

@@ -53,26 +53,22 @@ fp_feedback = (
 
 hp_feedback = (
     "The current action is helpful.",
-    "Your action is effective.",
+    "Your action is helpful.",
+    "This action is helpful.",
+    "Your current action is helpful.",
+    "The action you took is helpful.",
     "This action is beneficial.",
-    "Your current action is valuable.",
-    "The action you took is useful.",
-    "This action is contributing positively.",
-    "Your action is making a difference.",
-    "The current action you took is supportive.",
-    "Your chosen action is productive.",
-    "This action is working well."
+    "Your action is beneficial.",
+    "The current action you took is beneficial.",
 )
 
 hn_feedback = (
     "The current action is not helpful.",
-    "Your action is not supportive.",
+    "Your action is not helpful.",
+    "This action is not helpful.",
+    "Your current action is not helpful.",
+    "The action you took is not helpful.",
     "This action is ineffective.",
-    "Your current action is unhelpful.",
-    "The action you took is not useful.",
-    "This action is failing to help.",
-    "Your action is lacking in support.",
-    "The current action you took is counterproductive.",
-    "Your chosen action is not working.",
-    "This action is not making a positive impact."
+    "Your action is ineffective.",
+    "The current action you took is ineffective.",
 )

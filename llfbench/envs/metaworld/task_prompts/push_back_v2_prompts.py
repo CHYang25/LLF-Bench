@@ -25,27 +25,27 @@ hp_move_to_goal_feedback = (
 )
 
 hn_move_to_puck_feedback = (
-    "You should now move to the puck. However, based on the state, the action is not helping.",
-    "Approaching the puck is necessary. Yet, the action is ineffective based on the state.",
-    "Moving toward the puck is the correct step. However, the state shows this action is unhelpful.",
-    "Heading to the puck is advised. Yet, the state indicates this action is not effective.",
-    "You need to go to the puck. However, this action does not benefit the current state.",
-    "Reaching the puck is the next logical step. Yet, the state confirms this action is unsuitable.",
-    "Advancing to the puck is required. However, the state makes this action ineffective.",
-    "Closing in on the puck is vital. Yet, the state shows this action is disadvantageous.",
-    "You should proceed toward the puck. However, the state validates that this action is not helpful.",
-    "Moving closer to the puck is important. Yet, the state reveals this choice is unproductive."
+    "You should move to the puck. The action is not helpful.",
+    "Go to the puck. The action is not helpful.",
+    "You can head to the puck. This action is not working.",
+    "Move to the puck. The action is not benefitial.",
+    "You should go to the puck. This action is not helping.",
+    "Try moving to the puck. This action is not working.",
+    "Move to the puck. This action is not effective.",
+    "You can go to the puck. This action is not benefitial.",
+    "Head to the puck. This action is not helpful.",
+    "You should head to the puck. This action is not working.",
 )
 
 hn_move_to_goal_feedback = (
-    "You should now move backward to the goal. However, based on the state, the action is not helping.",
-    "Approaching the goal in the back is necessary. Yet, the action is ineffective based on the state.",
-    "Moving back toward the goal is the correct step. However, the state shows this action is unhelpful.",
-    "Heading backward to the goal is advised. Yet, the state indicates this action is not effective.",
-    "You need to go back to the goal. However, this action does not benefit the current state.",
-    "Reaching the goal in the back is the next logical step. Yet, the state confirms this action is unsuitable.",
-    "Advancing backward to the goal is required. However, the state makes this action ineffective.",
-    "Closing in on the goal in the back is vital. Yet, the state shows this action is disadvantageous.",
-    "You should proceed back toward the goal. However, the state validates that this action is not helpful.",
-    "Moving closer backward to the goal is important. Yet, the state reveals this choice is unproductive."
+    "You should move back to the goal. The action is not helpful.",
+    "Move back to the goal now. The action is not helpful.",
+    "You can head back to the goal. This action is not working.",
+    "Go back to the goal. The action is not benefitial.",
+    "You should move back to the puck. This action is not helping.",
+    "You can move back to the goal. This action is not working.",
+    "You should head back to the goal. This action is not effective.",
+    "You can go back to the goal. This action is not benefitial.",
+    "Head back to the goal. This action is not helpful.",
+    "Move back to the goal. This action is not working.",
 )
