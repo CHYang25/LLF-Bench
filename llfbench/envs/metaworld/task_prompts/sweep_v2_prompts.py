@@ -25,28 +25,27 @@ hp_move_to_goal_feedback = (
 )
 
 hn_move_to_cube_feedback = (
-    "You should move to the cube. The action is not helpful.",
-    "Go to the cube now. The action is not helpful.",
-    "You can head to the cube. This action is not working.",
-    "Move to the cube. The action is not benefitial.",
-    "You should head to the cube. This action is not helping.",
-    "You should go to the cube. This action is not working.",
-    "Move to the cube. This action is not effective.",
-    "You can go to the cube. This action is not benefitial.",
-    "Head to the cube. This action is not helpful.",
-    "You should move to the cube. This action is not working.",
+    "You should now move to the puck. However, based on the state, the action is not helping.",
+    "Approaching the puck is necessary. Yet, the action is ineffective based on the state.",
+    "Moving toward the puck is the correct step. However, the state shows this action is unhelpful.",
+    "Heading to the puck is advised. Yet, the state indicates this action is not effective.",
+    "You need to go to the puck. However, this action does not benefit the current state.",
+    "Reaching the puck is the next logical step. Yet, the state confirms this action is unsuitable.",
+    "Advancing to the puck is required. However, the state makes this action ineffective.",
+    "Closing in on the puck is vital. Yet, the state shows this action is disadvantageous.",
+    "You should proceed toward the puck. However, the state validates that this action is not helpful.",
+    "Moving closer to the puck is important. Yet, the state reveals this choice is unproductive."
 )
 
 hn_move_to_goal_feedback = (
-    "You should move sideways to the goal. The action is not helpful.",
-    "Move laterally to the goal now. The action is not helpful.",
-    "You can head sideways to the goal. This action is not working.",
-    "Go sideways to the goal. The action is not benefitial.",
-    "You should reach the goal sideways. This action is not helping.",
-    "Move laterally to the goal. This action is not working.",
-    "Move sideways to the goal. This action is not effective.",
-    "You can go sideways to the goal. This action is not benefitial.",
-    "Head laterally to the goal. This action is not helpful.",
-    "You can move laterally to the goal. This action is not working.",
+    "You should now move sideways to the goal. However, based on the state, the action is not helping.",
+    "Approaching the goal aside is necessary. Yet, the action is ineffective based on the state.",
+    "Moving laterally toward the goal is the correct step. However, the state shows this action is unhelpful.",
+    "Heading sideways to the goal is advised. Yet, the state indicates this action is not effective.",
+    "You need to move aside to the goal. However, this action does not benefit the current state.",
+    "Reaching the goal laterally is the next logical step. Yet, the state confirms this action is unsuitable.",
+    "Advancing sideways to the goal is required. However, the state makes this action ineffective.",
+    "Closing in on the goal aside is vital. Yet, the state shows this action is disadvantageous.",
+    "You should proceed laterally toward the goal. However, the state validates that this action is not helpful.",
+    "Moving closer to the goal sideways is important. Yet, the state reveals this choice is unproductive."
 )
-
