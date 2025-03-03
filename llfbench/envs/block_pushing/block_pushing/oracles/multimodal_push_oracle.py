@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """Oracle for multimodal pushing task."""
+from typing import List
 import llfbench.envs.block_pushing.block_pushing.oracles.oriented_push_oracle as oriented_push_oracle_module
 import numpy as np
 from tf_agents.trajectories import policy_step
@@ -27,6 +28,15 @@ import pybullet  # pylint: disable=unused-import
 
 class MultimodalOrientedPushOracle(oriented_push_oracle_module.OrientedPushOracle):
     """Oracle for multimodal pushing task."""
+    """
+    Possible Phases:
+    1. move_to_origin
+    2. move_to_preblock
+    3. move_to_first_preblock
+    4. push_block
+    5. orient_block_left
+    6. orient_block_right
+    """
 
     def __init__(self, env, goal_dist_tolerance=0.04, action_noise_std=0.0):
         super(MultimodalOrientedPushOracle, self).__init__(env)
@@ -190,7 +200,7 @@ class MultimodalOrientedPushOracle(oriented_push_oracle_module.OrientedPushOracl
                 self._first_target,
             )
             self._has_switched = False
-            self.phase == "move_to_pre_block"
+            self.phase = "move_to_pre_block"
 
         xy_delta = self._get_action_for_block_target(
             time_step, block=self._current_block, target=self._current_target
@@ -213,3 +223,66 @@ class MultimodalOrientedPushOracle(oriented_push_oracle_module.OrientedPushOracl
     @property
     def goal_dist_tolerance(self):
         return self._goal_dist_tolerance
+    
+    # for LLF-Bench
+    @property
+    def has_switched(self):
+        return self._has_switched
+    
+    def set_phase(self, phase: str):
+        assert phase in [
+            "return_to_origin",
+            "move_to_pre_block",
+            "return_to_first_preblock",
+            "push_block",
+            "orient_block_left",
+            "orient_block_right",
+        ], "Invalid phase."
+        self.phase = phase
+    
+    def set_block_target_order(
+            self,
+            first_block: str,
+            first_target: str,
+            second_block: str,
+            second_target: str):
+        assert (first_block == 'block' and second_block == 'block2') or (first_block == 'block2' and second_block == 'block')
+        assert (first_target == 'target' and second_target == 'target2') or (first_target == 'target2' and second_target == 'target')
+        self._first_block = first_block
+        self._first_target = first_target
+        self._second_block = second_block
+        self._second_target = second_target
+        if not self._has_switched:
+            self._current_block = self._first_block
+            self._current_target = self._first_target
+        else:
+            self._current_block = self._second_block
+            self._current_target = self._second_target
+
+    def set_has_switched(self, has_switched: bool):
+        self._has_switched = has_switched
+
+    def set_origin(self, origin):
+        self.origin = np.copy(origin)
+
+    def set_current_block(self, block):
+        self._current_block = block
+    
+    def set_current_target(self, target):
+        self._current_target = target
+
+    @property
+    def first_block(self):
+        return self._first_block
+    
+    @property
+    def second_block(self):
+        return self._second_block
+    
+    @property
+    def first_target(self):
+        return self._first_target
+    
+    @property
+    def second_target(self):
+        return self._second_target

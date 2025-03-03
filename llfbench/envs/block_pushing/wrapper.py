@@ -14,6 +14,11 @@ from textwrap import dedent, indent
 import re
 import sys, string
 
+STAGE_MOVE_TO_FIRST_BLOCK = 0
+STAGE_PUSH_FIRST_BLOCK_TO_FIRST_GOAL = 1
+STAGE_MOVE_TO_SECOND_BLOCK = 2
+STAGE_PUSH_SECOND_BLOCK_TO_SECOND_GOAL = 3
+
 # so that we won't get scientific notation
 np.set_printoptions(suppress=True)
 
@@ -34,6 +39,11 @@ class BlockPushingWrapper(LLFWrapper):
         self._policy = getattr(module, self._policy_name)(self.env)
         self._current_time_step = None
         self._prev_expert_action = None
+        self._first_block = None
+        self._first_target = None
+        self._second_block = None
+        self._second_target = None
+        self.stage = STAGE_MOVE_TO_FIRST_BLOCK
 
     @property
     def reward_range(self):
@@ -48,12 +58,21 @@ class BlockPushingWrapper(LLFWrapper):
         return self._policy
     
     @property
+    def bp_policy_stage(self):
+        return {
+            'current_block': self.bp_policy.current_block,
+            'current_target': self.bp_policy.current_target,
+            'phase': self.bp_policy.phase,
+            'has_switched': self.bp_policy.has_switched
+        }
+    
+    @property
     def current_time_step(self):
         return self._current_time_step
     
     @property
     def current_observation(self):
-        return self._current_time_step.observation
+        return self.current_time_step.observation
 
     # Observation attributes
     @property
@@ -97,6 +116,55 @@ class BlockPushingWrapper(LLFWrapper):
         return self.current_observation["target2_orientation"]
     
     @property
+    def previous_time_step(self):
+        return self._previous_time_step
+    
+    @property
+    def previous_observation(self):
+        return self.previous_time_step.observation
+
+    # Observation attributes
+    @property
+    def _previous_block_translation(self):
+        return self.previous_observation["block_translation"]
+    
+    @property
+    def _previous_block_orientation(self):
+        return self.previous_observation["block_orientation"]
+
+    @property
+    def _previous_block2_translation(self):
+        return self.previous_observation["block2_translation"]
+
+    @property
+    def _previous_block2_orientation(self):
+        return self.previous_observation["block2_orientation"]
+
+    @property
+    def _previous_effector_translation(self):
+        return self.previous_observation["effector_translation"]
+
+    @property
+    def _previous_effector_target_translation(self):
+        return self.previous_observation["effector_target_translation"]
+
+    @property
+    def _previous_target_translation(self):
+        return self.previous_observation["target_translation"]
+    
+    @property
+    def _previous_target_orientation(self):
+        return self.previous_observation["target_orientation"]
+    
+    @property
+    def _previous_target2_translation(self):
+        return self.previous_observation["target2_translation"]
+    
+    @property
+    def _previous_target2_orientation(self):
+        return self.previous_observation["target2_orientation"]
+    
+    @property
     def _any_block_out_of_bounds(self):
         inbound = lambda x: x[0] >= self.env.workspace_bounds[0][0] and x[0] <= self.env.workspace_bounds[1][0] and x[1] >= self.env.workspace_bounds[0][1] and x[1] <= self.env.workspace_bounds[1][1] 
         return not (inbound(self._current_block_translation) and inbound(self._current_block2_translation))
@@ -113,6 +181,12 @@ class BlockPushingWrapper(LLFWrapper):
     
     @property
     def num_reached_target_blocks(self):
+        print([
+            np.linalg.norm(self._current_block_translation - self._current_target_translation) < self.bp_policy.goal_dist_tolerance,
+            np.linalg.norm(self._current_block_translation - self._current_target2_translation) < self.bp_policy.goal_dist_tolerance,
+            np.linalg.norm(self._current_block2_translation - self._current_target_translation) < self.bp_policy.goal_dist_tolerance,
+            np.linalg.norm(self._current_block2_translation - self._current_target2_translation) < self.bp_policy.goal_dist_tolerance,
+        ])
         return sum([
             np.linalg.norm(self._current_block_translation - self._current_target_translation) < self.bp_policy.goal_dist_tolerance,
             np.linalg.norm(self._current_block_translation - self._current_target2_translation) < self.bp_policy.goal_dist_tolerance,
@@ -128,33 +202,120 @@ class BlockPushingWrapper(LLFWrapper):
     def _current_target_to_reach(self):
         return self.bp_policy.current_target
     
+    def set_block_target_order(self):
+        """
+        This function would determine the block target order. Here's the order
+        STAGE_MOVE_TO_FIRST_BLOCK:
+            1. The end effector must approach one of the blocks, or return negative feedback. Blocks order could be estimated.
+        STAGE_PUSH_FIRST_BLOCK_TO_FIRST_GOAL:
+            2. The end effector pushing one of the blocks, so blocks order could be determined.
+            3. The first block must be approaching one of the targets, or return negative feedback. Targets order could be estimated.
+        STAGE_MOVE_TO_SECOND_BLOCK, STAGE_PUSH_SECOND_BLOCK_TO_SECOND_GOAL:
+            4. The first block entered one of targets, so targets order could be determiend.
+            5. The second block and second target can be determiend.
+
+        block2 is green
+        """
+        if self.stage == STAGE_MOVE_TO_FIRST_BLOCK:
+            # consider the distance to the two blocks, and where the ee is heading to
+            prev_dist_to_block = np.linalg.norm(self._previous_effector_translation - self._previous_block_translation)
+            prev_dist_to_block2 = np.linalg.norm(self._previous_effector_translation - self._previous_block2_translation)
+            assert np.linalg.norm(self._previous_block_translation - self._current_block_translation) < self.bp_policy.block_effector_dist_tolerance
+            assert np.linalg.norm(self._previous_block2_translation - self._current_block2_translation) < self.bp_policy.block_effector_dist_tolerance
+            cur_dist_to_block = np.linalg.norm(self._current_effector_translation - self._current_block_translation)
+            cur_dist_to_block2 = np.linalg.norm(self._current_effector_translation - self._current_block2_translation)
+
+            if prev_dist_to_block - cur_dist_to_block > prev_dist_to_block2 - cur_dist_to_block2 \
+                or cur_dist_to_block < self.bp_policy.block_effector_dist_tolerance*1.5:
+                # Set current block to "block"
+                self._first_block = "block"
+                self._second_block = "block2"
+            else:
+                # Set current block to "block2"
+                self._first_block = "block2"
+                self._second_block = "block"
+            
+            self.bp_policy.set_phase("move_to_pre_block")
+            self.bp_policy.set_block_target_order(
+                first_block = self._first_block,
+                first_target = self.bp_policy.first_target,
+                second_block = self._second_block,
+                second_target = self.bp_policy.second_target,
+            )
+        
+        elif self.stage == STAGE_PUSH_FIRST_BLOCK_TO_FIRST_GOAL:
+            # consider the distance to the two blocks, and where the ee is heading to
+            cur_dist_to_block = np.linalg.norm(self._current_effector_translation - self._current_block_translation)
+            cur_dist_to_block2 = np.linalg.norm(self._current_effector_translation - self._current_block2_translation)
+            if cur_dist_to_block < cur_dist_to_block2:
+                assert self._current_block_to_reach == "block"
+            else:
+                assert self._current_block_to_reach == "block2"
+
+            prev_dist_to_target = np.linalg.norm(self.previous_observation[f"{self._current_block_to_reach}_translation"] - self._previous_target_translation)
+            prev_dist_to_target2 = np.linalg.norm(self.previous_observation[f"{self._current_block_to_reach}_translation"] - self._previous_target2_translation)
+            assert np.linalg.norm(self._previous_target_translation - self._current_target_translation) < self.bp_policy.block_effector_dist_tolerance
+            assert np.linalg.norm(self._previous_target2_translation - self._current_target2_translation) < self.bp_policy.block_effector_dist_tolerance
+            cur_dist_to_target = np.linalg.norm(self.current_observation[f"{self._current_block_to_reach}_translation"] - self._current_target_translation)
+            cur_dist_to_target2 = np.linalg.norm(self.current_observation[f"{self._current_block_to_reach}_translation"] - self._current_target2_translation)
+
+            if "orient" not in self.bp_policy.phase and self.bp_policy.phase != "move_to_pre_block":
+                if prev_dist_to_target - cur_dist_to_target > prev_dist_to_target2 - cur_dist_to_target2 \
+                    or cur_dist_to_target < self.bp_policy.goal_dist_tolerance:
+                    # Set current target to "target"
+                    self._first_target = "target"
+                    self._second_target = "target2"
+                else:
+                    # Set current target to "target2"
+                    self._first_target = "target2"
+                    self._second_target = "target"
+
+
+                self.bp_policy.set_phase("push_block")
+                self.bp_policy.set_block_target_order(
+                    first_block = self.bp_policy.first_block,
+                    first_target = self._first_target,
+                    second_block = self.bp_policy.second_block,
+                    second_target = self._second_target,
+                )
+
+                # FIXME: Change this before evaluating the new stage
+                print(cur_dist_to_target)
+                print(cur_dist_to_target2)
+                if cur_dist_to_target < self.bp_policy.goal_dist_tolerance or cur_dist_to_target2 < self.bp_policy.goal_dist_tolerance:
+                    self.bp_policy.set_current_block(self.bp_policy.second_block)
+                    self.bp_policy.set_current_target(self.bp_policy.second_target)
+                    self.bp_policy.set_has_switched(True)
+                    self.bp_policy.set_phase("return_to_first_preblock")
+
+        elif self.stage == STAGE_MOVE_TO_SECOND_BLOCK:
+            first_block_target_dist = np.linalg.norm(self.current_observation[f"{self._first_block}_translation"] - self.current_observation[f"{self._first_target}_translation"])
+            assert first_block_target_dist < self.bp_policy.goal_dist_tolerance
+
+            if not self.bp_policy.phase == 'return_to_origin' and not self.bp_policy.phase == 'move_to_pre_block':
+                self.bp_policy.set_phase("return_to_first_preblock")
+
+        elif self.stage == STAGE_PUSH_SECOND_BLOCK_TO_SECOND_GOAL:
+            first_block_target_dist = np.linalg.norm(self.current_observation[f"{self._first_block}_translation"] - self.current_observation[f"{self._first_target}_translation"])
+            assert first_block_target_dist < self.bp_policy.goal_dist_tolerance
+
+            if "orient" not in self.bp_policy.phase and self.bp_policy.phase != "move_to_pre_block":
+                self.bp_policy.set_phase("push_block")
+        
+        else:
+            raise ValueError("Invalid Stage to evaluate block target order.")
+
     # step function
     def _step(self, action):
-        previous_effector_translation = self._current_effector_translation
+        # step
+        self._previous_time_step = self._current_time_step
+        previous_effector_translation = self._previous_effector_translation
 
         action = action.copy()
         time_step = self.env.step(action)
         self._current_time_step = time_step
 
-        feedback_type = self._feedback_type
-        expert_action = self.expert_action()
-        if self._prev_expert_action is None:
-            self._prev_expert_action = expert_action.copy()
-
-        target_effector_translation = self._prev_expert_action.copy() + previous_effector_translation
-
-        self._prev_expert_action = expert_action.copy()
-        recommend_action = expert_action.copy()
-
-        moving_away = np.linalg.norm(target_effector_translation - previous_effector_translation) < np.linalg.norm(target_effector_translation - self._current_effector_translation)
-        moving_away_axis = [
-            tet - pet < tet - cet
-            for tet, pet, cet in zip(target_effector_translation, previous_effector_translation, self._current_effector_translation)
-        ]
-
-        moving_away_direction = direction_converter(target_effector_translation - self._current_effector_translation)
-        moving_away_degree = degree_adverb_converter(target_effector_translation - self._current_effector_translation)
-
+        # set stages
         """
         Stages:
         - both blocks not in the target:
@@ -171,31 +332,81 @@ class BlockPushingWrapper(LLFWrapper):
         num_reached_target_blocks = self.num_reached_target_blocks
         current_block_to_reach_reached = np.linalg.norm(
             self.current_observation[f"{self._current_block_to_reach}_translation"] - self._current_effector_translation
-        ) < self.bp_policy.block_effector_dist_tolerance*1.2
+        ) < self.bp_policy.block_effector_dist_tolerance*2.0
         current_target_to_reach_reached = np.linalg.norm(
             self.current_observation[f"{self._current_target_to_reach}_translation"] - self.current_observation[f"{self._current_block_to_reach}_translation"]
         ) < self.bp_policy.goal_dist_tolerance
 
         if num_reached_target_blocks == 0:
             if not current_block_to_reach_reached:
+                self.stage = STAGE_MOVE_TO_FIRST_BLOCK
                 _stage_feedback = self.format(blockpushing_multimodal.move_to_first_block_feedback)
             elif current_block_to_reach_reached and not current_target_to_reach_reached:
+                self.stage = STAGE_PUSH_FIRST_BLOCK_TO_FIRST_GOAL
                 _stage_feedback = self.format(blockpushing_multimodal.push_first_block_to_first_goal_feedback)
             else:
                 raise ValueError
         elif num_reached_target_blocks == 1:
             if not current_block_to_reach_reached:
+                self.stage = STAGE_MOVE_TO_SECOND_BLOCK
                 _stage_feedback = self.format(blockpushing_multimodal.move_to_second_block_feedback)
             elif current_block_to_reach_reached and not current_target_to_reach_reached:
+                self.stage = STAGE_PUSH_SECOND_BLOCK_TO_SECOND_GOAL
                 _stage_feedback = self.format(blockpushing_multimodal.push_second_block_to_second_goal_feedback)
             else:
-                raise ValueError
+                assert self._current_block_to_reach == self._first_block and self._current_target_to_reach == self._first_target
+                self.stage = STAGE_MOVE_TO_SECOND_BLOCK
+                _stage_feedback = self.format(blockpushing_multimodal.move_to_second_block_feedback)
         else:
             _stage_feedback = self.format(blockpushing_multimodal.push_second_block_to_second_goal_feedback)
 
         # _stage_feedback += str(np.linalg.norm(
         #     self.current_observation[f"{self._current_block_to_reach}_translation"] - self._current_effector_translation
         # ))
+
+        self.set_block_target_order()
+
+        # After the correct stage is set, copy the correct expert action
+        feedback_type = self._feedback_type
+        expert_action = self.expert_action()
+        # if self._prev_expert_action is None:
+        # self._prev_expert_action = expert_action.copy()
+
+        target_effector_translation = self._prev_expert_action.copy() + previous_effector_translation
+
+        self._prev_expert_action = expert_action.copy()
+        recommend_action = expert_action.copy()
+
+        moving_away = np.linalg.norm(target_effector_translation - previous_effector_translation) < np.linalg.norm(target_effector_translation - self._current_effector_translation)
+        moving_away_axis = [
+            tet - pet < tet - cet
+            for tet, pet, cet in zip(target_effector_translation, previous_effector_translation, self._current_effector_translation)
+        ]
+
+        moving_away_direction = direction_converter(target_effector_translation - self._current_effector_translation)
+        moving_away_degree = degree_adverb_converter(target_effector_translation - self._current_effector_translation)
+
+        if self.stage == STAGE_MOVE_TO_FIRST_BLOCK:
+            """
+            If the stage is to move to the first block, 
+            then as soon as the effector is approaching one of the blocks, moving away shall be false.
+            Since, it couldn't be determined which one is the first block to reach.
+            """
+            moving_away = ((np.linalg.norm(self._previous_effector_translation - self._previous_block_translation) \
+                            > np.linalg.norm(self._current_effector_translation - self._current_block_translation)) \
+                                and (np.linalg.norm(self._previous_effector_translation - self._previous_block2_translation) \
+                                     > np.linalg.norm(self._current_effector_translation - self._current_block2_translation))) 
+        
+        elif self.stage == STAGE_PUSH_FIRST_BLOCK_TO_FIRST_GOAL:
+            """
+            If the stage is to push to the first goal, 
+            then as soon as the effector is pushing the block to one of the targets, moving away shall be false.
+            Since, it couldn't be determined which one is the first block to reach.
+            """
+            moving_away = ((np.linalg.norm(self.previous_observation[f"{self._current_block_to_reach}_translation"] - self._previous_target_translation) \
+                           > np.linalg.norm(self._current_effector_translation - self._current_block_translation)) \
+                            and (np.linalg.norm(self.previous_observation[f"{self._current_block_to_reach}_translation"] - self._previous_target2_translation) \
+                                 > np.linalg.norm(self._current_effector_translation - self._current_block2_translation))) 
 
         # Compute Feedback
         feedback = Feedback()
@@ -215,7 +426,8 @@ class BlockPushingWrapper(LLFWrapper):
                         _feedback += conj + recommend_templates_sampler().format(degree=degree, direction=direction)
                         first_conjunction_used = True
 
-                feedback.hp = _feedback
+                a = self.bp_policy_stage
+                feedback.hp = f"{_feedback} curblock: {a['current_block']} curtarget: {a['current_target']} phase: {a['phase']} has_switched: {a['has_switched']} stage: {self.stage}."
 
         if 'hn' in feedback_type:  # moved away from the expert goal
             # _feedback = self.format(hn_feedback) if moving_away else None
@@ -227,7 +439,8 @@ class BlockPushingWrapper(LLFWrapper):
                     if away:
                         _feedback += positive_conjunctions_sampler() + recommend_templates_sampler().format(degree=degree, direction=direction)
 
-                feedback.hn = _feedback
+                a = self.bp_policy_stage
+                feedback.hn = f"{_feedback} curblock: {a['current_block']} curtarget: {a['current_target']} phase: {a['phase']} has_switched: {a['has_switched']} stage: {self.stage}."
 
         if 'fp' in feedback_type:  
             # suggest the expert goal
@@ -239,7 +452,7 @@ class BlockPushingWrapper(LLFWrapper):
         return dict(instruction=None, observation=observation, feedback=feedback), float(reward), info['success'], info['success'] or self._any_block_out_of_bounds, info 
 
     def _reset(self, seed=None, options=None): # there's no variables for the reset function
-        self._current_time_step = self.env.reset()
+        self._current_time_step = self.env.reset(seed=seed)
         self._prev_expert_action = self.expert_action() # This would also activate the oracle policy to choose the stages
         observation = self._format_obs(self.current_observation)
         task = re.search(r'(.*)-v[0-9]', self.env.env_name).group(1)
