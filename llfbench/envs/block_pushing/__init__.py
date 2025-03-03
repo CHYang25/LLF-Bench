@@ -44,6 +44,11 @@ def make_env(env_name,
             if seed is not None:
                 random.seed(seed)
                 np.random.seed(seed)
+                # These are for pybullet environments reproduction
+                # https://github.com/benelot/pybullet-gym/issues/34
+                self.env.seed(seed)
+                self.env.action_space.seed(seed)
+                self.env.observation_space.seed(seed)
             return self.env.reset()
         
     env = Wrapper(env)
