@@ -49,7 +49,7 @@ def make_env(env_name,
                 self.env.seed(seed)
                 self.env.action_space.seed(seed)
                 self.env.observation_space.seed(seed)
-            return self.env.reset()
+            return self.env.reset() # tf_agents GymWrapper reset has no argument
         
     env = Wrapper(env)
     

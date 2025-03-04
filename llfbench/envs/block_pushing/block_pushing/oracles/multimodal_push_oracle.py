@@ -38,7 +38,7 @@ class MultimodalOrientedPushOracle(oriented_push_oracle_module.OrientedPushOracl
     6. orient_block_right
     """
 
-    def __init__(self, env, goal_dist_tolerance=0.04, action_noise_std=0.0):
+    def __init__(self, env, goal_dist_tolerance=0.05, action_noise_std=0.0):
         super(MultimodalOrientedPushOracle, self).__init__(env)
         self._goal_dist_tolerance = goal_dist_tolerance
         self._action_noise_std = action_noise_std
