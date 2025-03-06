@@ -506,7 +506,8 @@ class BlockPushingWrapper(LLFWrapper):
                         first_conjunction_used = True
 
                 a = self.bp_policy_stage
-                feedback.hp = f"""
+                if self.debug:
+                    feedback.hp = f"""
 {_feedback} 
 
 curblock: {a['current_block']}
@@ -518,6 +519,8 @@ phase: {a['phase']}
 has_switched: {a['has_switched']}
 
 stage: {self.stage}."""
+                else:
+                    feedback.hp = _feedback
 
         if 'hn' in feedback_type:  # moved away from the expert goal
             # _feedback = self.format(hn_feedback) if moving_away else None
@@ -530,7 +533,8 @@ stage: {self.stage}."""
                         _feedback += positive_conjunctions_sampler() + recommend_templates_sampler().format(degree=degree, direction=direction)
 
                 a = self.bp_policy_stage
-                feedback.hn = f"""
+                if self.debug:
+                    feedback.hn = f"""
 {_feedback} 
 
 curblock: {a['current_block']}
@@ -542,6 +546,8 @@ phase: {a['phase']}
 has_switched: {a['has_switched']}
 
 stage: {self.stage}."""
+                else:
+                    feedback.hn = _feedback
                 
         if 'fp' in feedback_type:  
             # suggest the expert goal
