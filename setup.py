@@ -35,12 +35,7 @@ setuptools.setup(
         'alfworld': [ 'alfworld>=0.3.0' ],
         'maniskill': [ 'mani_skill==3.0.0b12' ],
         'blockpushing': [ 
-            'pybullet==3.2.6', 
             'tf-agents==0.19.0', 
-            'typing-extensions==4.12.2',
-            'pygame==2.6.1',
-            'gym==0.26.2',
-            'tensorflow==2.15.1'
         ]
     }
 )
