@@ -265,7 +265,7 @@ class BlockPushingWrapper(LLFWrapper):
                 self._first_block = "block2"
                 self._second_block = "block"
 
-            self.bp_policy.set_phase("move_to_pre_block")
+            # self.bp_policy.set_phase("move_to_pre_block")
             self.bp_policy.set_block_target_order(
                 first_block = self._first_block,
                 first_target = self.bp_policy.first_target,
