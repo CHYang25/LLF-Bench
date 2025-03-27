@@ -497,13 +497,12 @@ class BlockPushingWrapper(LLFWrapper):
             # _feedback = self.format(hp_feedback) if not moving_away else None
             if not moving_away:
                 _feedback = _stage_feedback
-                _feedback += ' ' + self.format(hp_feedback)
+                _feedback += positive_conjunctions_sampler() + self.format(hp_feedback)
 
                 for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
                     if away:
-                        conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                        conj = negative_conjunctions_sampler()
                         _feedback += conj + recommend_templates_sampler().format(degree=degree, direction=direction)
-                        first_conjunction_used = True
 
                 a = self.bp_policy_stage
                 if self.debug:
@@ -526,7 +525,7 @@ stage: {self.stage}."""
             # _feedback = self.format(hn_feedback) if moving_away else None
             if moving_away:
                 _feedback = _stage_feedback
-                _feedback += ' ' + self.format(hn_feedback)
+                _feedback += positive_conjunctions_sampler() + self.format(hn_feedback)
 
                 for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
                     if away:
