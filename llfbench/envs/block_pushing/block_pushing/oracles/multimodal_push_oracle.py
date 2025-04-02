@@ -62,7 +62,7 @@ class MultimodalOrientedPushOracle(oriented_push_oracle_module.OrientedPushOracl
 
     def _get_action_for_block_target(self, time_step, block="block", target="target"):
         # Specifying this as velocity makes it independent of control frequency.
-        max_step_velocity = 0.35
+        max_step_velocity = 1.0
 
         info = self._get_action_info(time_step, block, target)
 
@@ -75,7 +75,7 @@ class MultimodalOrientedPushOracle(oriented_push_oracle_module.OrientedPushOracl
             )
 
         if self.phase == "return_to_first_preblock":
-            max_step_velocity = 0.3
+            max_step_velocity = 1.0
             if self.first_preblock is None:
                 self.first_preblock = self.origin
             # Return to the first preblock.
@@ -86,7 +86,7 @@ class MultimodalOrientedPushOracle(oriented_push_oracle_module.OrientedPushOracl
             xy_delta = xy_delta_to_origin
 
         if self.phase == "return_to_origin":
-            max_step_velocity = 0.3
+            max_step_velocity = 1.0
             # Go 5 cm away from the block, on the line between the block and target.
             xy_delta_to_origin = self.origin - info.xy_ee
             diff = np.linalg.norm(xy_delta_to_origin)

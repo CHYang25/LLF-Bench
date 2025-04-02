@@ -19,7 +19,7 @@ def make_env(env_name,
              seed=0,
              warning=True,
              ):
-    env = GymWrapper(BlockPushMultimodal())
+    env = GymWrapper(BlockPushMultimodal(control_frequency=10.0))
 
     class Wrapper(gym.Wrapper):
         def __init__(self, env):

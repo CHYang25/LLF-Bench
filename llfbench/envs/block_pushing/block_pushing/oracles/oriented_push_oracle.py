@@ -59,9 +59,10 @@ class OrientedPushOracle(py_policy.PyPolicy):
         xy_ee = time_step.observation["effector_target_translation"][:2]
 
         xy_block_to_target = xy_target - xy_block
-        xy_dir_block_to_target = (xy_block_to_target) / np.linalg.norm(
+        xy_block_to_target_norm = np.linalg.norm(
             xy_block_to_target
         )
+        xy_dir_block_to_target = (xy_block_to_target) / xy_block_to_target_norm
         theta_to_target = self.get_theta_from_vector(xy_dir_block_to_target)
 
         theta_error = theta_to_target - theta_block
@@ -73,7 +74,7 @@ class OrientedPushOracle(py_policy.PyPolicy):
 
         xy_pre_block = xy_block + -xy_dir_block_to_target * 0.05
         xy_nexttoblock = xy_block + -xy_dir_block_to_target * 0.03
-        xy_touchingblock = xy_block + -xy_dir_block_to_target * 0.01
+        xy_touchingblock = xy_block + xy_dir_block_to_target * min(0.1, xy_block_to_target_norm * 0.1)
         xy_delta_to_nexttoblock = xy_nexttoblock - xy_ee
         xy_delta_to_touchingblock = xy_touchingblock - xy_ee
 

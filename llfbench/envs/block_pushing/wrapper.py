@@ -27,7 +27,7 @@ class BlockPushingWrapper(LLFWrapper):
     INSTRUCTION_TYPES = ('b') #('b', 'p', 'c')
     FEEDBACK_TYPES = ('r', 'hp', 'hn', 'fp')
 
-    def __init__(self, env, instruction_type, feedback_type, debug: bool = False):
+    def __init__(self, env, instruction_type, feedback_type, debug: bool = False, mani_oracle: bool = True):
         super().__init__(env, instruction_type, feedback_type)
         # load the scripted policy
         if self.env.env_name == "BlockPushMultimodal-v0":
@@ -45,6 +45,10 @@ class BlockPushingWrapper(LLFWrapper):
         self._second_target = None
         self.stage = STAGE_MOVE_TO_FIRST_BLOCK
         self.debug = debug
+        self.mani_oracle = mani_oracle
+        self.control_time_out = 20
+        self.control_tolerance = 1e-2
+        self.max_step_distance = 0.03
 
     @property
     def reward_range(self):
@@ -209,6 +213,8 @@ class BlockPushingWrapper(LLFWrapper):
         return self.bp_policy.block_effector_dist_tolerance * 2.0
     
     def set_block_target_order(self):
+        if self.mani_oracle:
+            return
         """
         This function would determine the block target order. Here's the order
         STAGE_MOVE_TO_FIRST_BLOCK:
@@ -357,6 +363,17 @@ class BlockPushingWrapper(LLFWrapper):
         else:
             raise ValueError("Invalid Stage to evaluate block target order.")
 
+    def control(self, desired_pos):
+        assert len(desired_pos) == 2, "The action should be a 2D vector."
+        control = desired_pos - self._current_effector_translation
+        length = np.linalg.norm(control)
+        # if length * 0.3 > self.max_step_distance:
+        #     return (control / length) * self.max_step_distance
+        if length > self.max_step_distance:
+            return control * 0.1
+        else:
+            return control
+
     # step function
     def _step(self, action):
         # step
@@ -364,9 +381,15 @@ class BlockPushingWrapper(LLFWrapper):
         previous_effector_translation = self._previous_effector_translation
 
         action = action.copy()
-        time_step = self.env.step(action)
-        self._current_time_step = time_step
 
+        desired_pos = action + previous_effector_translation
+        for _ in range(self.control_time_out):
+            control = self.control(desired_pos)
+            time_step = self.env.step(control)
+            self._current_time_step = time_step
+
+            if np.abs(desired_pos - self._current_effector_translation).max() < self.control_tolerance:
+                break
         # set stages
         """
         Stages:
