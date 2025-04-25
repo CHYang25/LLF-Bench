@@ -4,6 +4,7 @@ from typing import Dict, Any, Tuple, Union, List, Callable, Set
 from llfbench.envs.utils import format
 import parse
 import sys, string
+from omegaconf import ListConfig
 
 """
 
@@ -154,7 +155,8 @@ class LLFWrapper(gym.Wrapper):
                 FEEDBACK_TYPES (represented as set, list or tuple).
         """
         assert isinstance(feedback_type, str) or isinstance(feedback_type, set) \
-            or isinstance(feedback_type, list) or isinstance(feedback_type, tuple), \
+            or isinstance(feedback_type, list) or isinstance(feedback_type, tuple) \
+            or isinstance(feedback_type, ListConfig) , \
             'feedback_type must be a string, set, list, or tuple'
         if feedback_type in ('n', 'a', 'm'):
             self.__feedback_type = feedback_type
