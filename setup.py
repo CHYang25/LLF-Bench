@@ -28,12 +28,13 @@ setuptools.setup(
         # highway
         "highway-env",
         # reco
-        'requests==2.32.0'
+        'requests==2.32.0',
+        'omegaconf'
     ],
     extras_require={
         'metaworld': ['metaworld@git+https://github.com/Farama-Foundation/Metaworld.git@c822f28#egg=metaworld'],
         'alfworld': [ 'alfworld>=0.3.0' ],
-        'maniskill': [ 'mani_skill==3.0.0b12' ],
+        'maniskill': [ 'mani_skill==3.0.0b20' ],
         'blockpushing': [ 
             'tf-agents==0.19.0', 
         ]
