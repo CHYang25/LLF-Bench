@@ -4,7 +4,6 @@ import mani_skill.envs
 from mani_skill.utils.download_demo import DATASET_SOURCES 
 import numpy as np
 import random
-from gymnasium.wrappers import TimeLimit
 import warnings
 from llfbench.envs.maniskill.wrapper import ManiskillWrapper
 
@@ -19,13 +18,17 @@ def make_env(env_name,
     env = gym.make(
         env_name,
         obs_mode=obs_mode,
-        control_mode="pd_ee_delta_pose", # This is fixed
+        control_mode="pd_joint_delta_pos", # This is fixed
         num_envs=1, 
+        render_mode="rgb_array",
     )
 
     class Wrapper(gym.Wrapper):
         def __init__(self, env):
             super().__init__(env)
+            self._render_video = False
+            self.visual = visual
+            assert self.env.render_mode == "rgb_array"
 
         @property
         def env_name(self):
@@ -43,7 +46,7 @@ def make_env(env_name,
         gym.logger.set_level(gym.logger.ERROR)
         warnings.filterwarnings("ignore")
 
-    return TimeLimit(ManiskillWrapper(env, instruction_type=instruction_type, feedback_type=feedback_type), max_episode_steps=30)
+    return ManiskillWrapper(env, instruction_type=instruction_type, feedback_type=feedback_type) # Maniskill already has timestep Limitation
 
 
 # DATA_SOURCES is a dictionary that contains tasks that an expert planning policy is provided by the Maniskill Benchmark
@@ -52,5 +55,13 @@ for env_name in DATASET_SOURCES.keys():
     register(
         id=f"llf-maniskill-{env_name}",
         entry_point='llfbench.envs.maniskill:make_env',
-        kwargs=dict(env_name=env_name, feedback_type='a', instruction_type='b', visual=False, obs_mode='state', seed=0, warning=True)
+        kwargs=dict(
+            env_name=env_name, 
+            feedback_type='a', 
+            instruction_type='b', 
+            visual=False, 
+            obs_mode='state_dict', 
+            seed=0, 
+            warning=True, 
+        )
     )

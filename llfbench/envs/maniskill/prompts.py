@@ -1,6 +1,11 @@
-
-mw_instruction = (
-    "Your job is to control a Sawyer robot arm to solve a {task} task. You will get observations of the robot state and the world state in the form of json strings. Your objective is to provide control inputs to the robot to achieve the task's goal state over multiple time steps. Your actions are 4-dim vectors, where the first 3 dimensions control the movement of the robot's end effector in the x, y, and z directions, and the last dimension controls the gripper state (0 means opening it, and 1 means closing it). You action at each step sets the robot's target pose for that step in {mode} coordinate. The robot will move towards that pose using a P controller.",
+ms_instruction = (
+"""
+Your job is to control a Panda robot arm to solve a {task} task. 
+You will get observations of the robot state and the world state in the form of json strings. 
+Your objective is to provide control inputs to the robot to achieve the task's goal state over multiple time steps. 
+Your actions are 8-dim vectors, where the first 7 dimensions control the angular movement of the robot's joints, 
+and the last dimension controls the gripper state (0 means opening it, and 1 means closing it).
+""",
 )
 
 r_feedback = (
@@ -28,27 +33,27 @@ r_feedback = (
 )
 
 fp_feedback = (
-    "You should go to {expert_action}.",
-    "I recommend that you move to {expert_action}.",
-    "You should move to {expert_action}.",
-    "I suggest you move to pose {expert_action}.",
-    "The pose {expert_action} will help you get to the goal faster.",
-    "Try moving to pose {expert_action}.",
-    "One thing to try is to go to {expert_action}.",
-    "The target {expert_action} is promising.",
-    "Aim to reach pose {expert_action} at the next step.",
-    "My advice is to reach first {expert_action}.",
-    "Go for the post {expert_action}.",
-    "I would try the target {expert_action} if I were you.",
-    "Consider going to {expert_action}.",
-    "Attempt to reach pose {expert_action} next.",
-    "My suggestion is that you go towards pose {expert_action}.",
-    "Moving to pose {expert_action} next looks promising.",
-    "I advise you to go to {expert_action}.",
-    "Next, move to pose {expert_action}.",
-    "Moving to {expert_action} now is a good idea.",
-    "If you want a tip, {expert_action} is a good pose to aim for next.",
-    "I urge you to move to pose {expert_action}.",
+    "You should set your joints to {expert_action}.",
+    "I recommend adjusting to joint configuration {expert_action}.",
+    "You should configure your joints to {expert_action}.",
+    "I suggest setting your joints to configuration {expert_action}.",
+    "The joint configuration {expert_action} will help you reach the goal faster.",
+    "Try adjusting to joint configuration {expert_action}.",
+    "One thing to try is setting your joints to {expert_action}.",
+    "The joint configuration {expert_action} is promising.",
+    "Aim to set your joints to configuration {expert_action} next.",
+    "My advice is to adjust to joint configuration {expert_action} first.",
+    "Go for the joint configuration {expert_action}.",
+    "I would try the joint configuration {expert_action} if I were you.",
+    "Consider setting your joints to {expert_action}.",
+    "Attempt to adjust to joint configuration {expert_action} next.",
+    "My suggestion is to set your joints to configuration {expert_action}.",
+    "Adjusting to joint configuration {expert_action} next looks promising.",
+    "I advise you to set your joints to {expert_action}.",
+    "Next, configure your joints to {expert_action}.",
+    "Setting your joints to {expert_action} now is a good idea.",
+    "If you want a tip, {expert_action} is a good joint configuration to aim for next.",
+    "I urge you to adjust to joint configuration {expert_action}.",
 )
 
 open_gripper_feedback = (
