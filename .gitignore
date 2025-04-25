@@ -161,3 +161,7 @@ cython_debug/
 #.idea/
 
 alfworld_data
+
+# Maniskill
+runs
+wandb
