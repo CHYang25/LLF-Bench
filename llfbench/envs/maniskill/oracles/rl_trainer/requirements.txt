@@ -1,0 +1,7 @@
+mani-skill==3.0.0b20
+torchrl==0.7.2
+tensordict==0.7.2
+numpy==1.26.4
+torch==2.6.0
+tensorboard==2.19.0
+wandb
