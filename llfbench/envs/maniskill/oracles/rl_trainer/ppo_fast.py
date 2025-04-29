@@ -17,7 +17,10 @@ from typing import Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
-import tensordict
+try:
+    import tensordict
+except:
+    pass
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -303,12 +306,14 @@ def update(obs, actions, logprobs, advantages, returns, vals):
 
     return approx_kl, v_loss.detach(), pg_loss.detach(), entropy_loss.detach(), old_approx_kl, clipfrac, gn
 
-
-update = tensordict.nn.TensorDictModule(
-    update,
-    in_keys=["obs", "actions", "logprobs", "advantages", "returns", "vals"],
-    out_keys=["approx_kl", "v_loss", "pg_loss", "entropy_loss", "old_approx_kl", "clipfrac", "gn"],
-)
+try:
+    update = tensordict.nn.TensorDictModule(
+        update,
+        in_keys=["obs", "actions", "logprobs", "advantages", "returns", "vals"],
+        out_keys=["approx_kl", "v_loss", "pg_loss", "entropy_loss", "old_approx_kl", "clipfrac", "gn"],
+    )
+except:
+    pass
 
 if __name__ == "__main__":
     args = tyro.cli(Args)
