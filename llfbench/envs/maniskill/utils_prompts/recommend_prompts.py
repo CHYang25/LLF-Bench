@@ -1,6 +1,6 @@
 import random
 
-recommend_templates = [
+move_recommend_templates = [
     "you should move {direction} {degree}.",
     "it is recommended to move {direction} {degree}.",
     "consider moving {direction} {degree}.",
@@ -15,5 +15,15 @@ recommend_templates = [
     "a good step would be moving {direction} {degree}.",
 ]
 
-
-recommend_templates_sampler = lambda: random.choice(recommend_templates)
+turn_recommend_templates = [
+    "you should {direction} {degree}.",
+    "try to {direction} {degree}.",
+    "consider a {direction} {degree}.",
+    "it is a good idea to {direction} {degree}.",
+    "you might want to {direction} {degree}.",
+    "it would be smart to {direction} {degree}.",
+    "a {direction} {degree} could work well.",
+    "you could aim for a {direction} {degree}.",
+    "it would help to go for a {direction} {degree}.",
+    "go ahead with a {direction} {degree}."
+]
