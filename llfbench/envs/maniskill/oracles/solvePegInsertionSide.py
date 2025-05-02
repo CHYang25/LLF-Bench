@@ -2,12 +2,6 @@ from mani_skill.envs.tasks import PegInsertionSideEnv
 from enum import auto, Enum
 from llfbench.envs.maniskill.oracles.solveManiskill import solveManiskill
 
-class PegInsertionSideStages(Enum):
-    REACH = auto()
-    GRASP = auto()
-    ALIGN_PEG = auto()
-    INSERT = auto()
-
 class solvePegInsertionSide(solveManiskill):
 
     def __init__(self, env:PegInsertionSideEnv, device='cuda', seed=None, debug=False, vis=False):
@@ -21,5 +15,3 @@ class solvePegInsertionSide(solveManiskill):
             debug=debug,
             vis=vis
         )
-
-        self.stage = PegInsertionSideStages.REACH
