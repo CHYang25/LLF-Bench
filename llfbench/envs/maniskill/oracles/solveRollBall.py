@@ -2,9 +2,6 @@ from mani_skill.envs.tasks import RollBallEnv
 from enum import auto, Enum
 from llfbench.envs.maniskill.oracles.solveManiskill import solveManiskill
 
-class RollBallStages(Enum):
-    pass
-
 class solveRollBall(solveManiskill):
 
     def __init__(self, env:RollBallEnv, device='cuda', seed=None, debug=False, vis=False):
@@ -18,5 +15,3 @@ class solveRollBall(solveManiskill):
             debug=debug,
             vis=vis
         )
-
-        #TODO: Define Rollball stages

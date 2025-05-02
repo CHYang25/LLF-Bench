@@ -6,21 +6,24 @@ from llfbench.envs.llf_env import LLFWrapper, Feedback
 from llfbench.envs.maniskill.prompts import *
 from llfbench.envs.maniskill.task_prompts import (
     peg_insertion_side_prompts,
+    roll_ball_prompts,
 )
 from llfbench.envs.maniskill.utils_prompts.degree_prompts import move_degree_adverb_converter, turn_degree_adverb_converter
 from llfbench.envs.maniskill.utils_prompts.direction_prompts import move_direction_converter, turn_direction_converter
 from llfbench.envs.maniskill.utils_prompts.conjunction_prompts import positive_conjunctions_sampler, negative_conjunctions_sampler
 from llfbench.envs.maniskill.utils_prompts.recommend_prompts import move_recommend_templates, turn_recommend_templates
-from llfbench.envs.maniskill.utils import quaternion_angle, quaternion_rotation_difference
+from llfbench.envs.maniskill.utils import quaternion_angle, quaternion_rotation_difference, angle_between_vectors_deg, quaternion_to_axis_angle
 import mani_skill
 import importlib
 import json
 from textwrap import dedent, indent
 import llfbench.envs.maniskill.oracles as solve_policy
 import re
+import math
 
 # so that we won't get scientific notation
 np.set_printoptions(suppress=True)
+torch.set_printoptions(precision=5, sci_mode=False)
 
 COMPARE_THRESHOLD = 1e-4
 
@@ -52,8 +55,6 @@ class ManiskillWrapper(LLFWrapper):
 
         if self.env.env_name == 'PullCubeTool-v1':
             self._step = self._step_pull_cube_tool
-        elif self.env.env_name == 'StackCube-v1':
-            self._step = self._step_stack_cube
         elif self.env.env_name == 'PegInsertionSide-v1':
             self._step = self._step_peg_insertion_side
             self.peg_reached_threshold = 5e-2
@@ -61,12 +62,14 @@ class ManiskillWrapper(LLFWrapper):
             self.peg_aligned_threshold = 1e-1 
             self.box_hole_peg_reached_threshold = 2.5e-1 
             self.box_hole_peg_inserted_threshold = 1.25e-1
-        elif self.env.env_name == 'PlugCharger-v1':
-            self._step = self._step_plug_charger
-        elif self.env.env_name == 'PushT-v1':
-            self._step = self._step_pusht
         elif self.env.env_name == 'RollBall-v1':
             self._step = self._step_roll_ball
+            self.ball_reached_threshold = 8.6e-2
+            self.before_ball_reached_threshold = 0
+            self.ball_rolled_threshold = 1e-6
+            self.ball_rolled_out_threshold = 5e-1
+            self.goal_radius = self.env.goal_radius
+            self.ball_radius = self.env.ball_radius
         else:
             self._step = self._step_general
 
@@ -127,23 +130,7 @@ class ManiskillWrapper(LLFWrapper):
         - PegInsertionSide-v1
         """
         return self._current_observation['extra']['box_hole_radius']
-    
-    @property
-    def current_goal_pos(self):
-        """ 
-        The goal position for the following tasks:
-        - PushT-v1: The goal T shaped position
-        """
-        return self._current_observation['extra']['goal_pos']
-    
-    @property
-    def current_obj_pose(self):
-        """ 
-        The object position for the following tasks:
-        - PushT-v1: The position of the T-shaped object 
-        """
-        return self._current_observation['extra']['obj_pose']
-    
+        
     @property
     def current_ball_pose(self):
         """
@@ -175,6 +162,10 @@ class ManiskillWrapper(LLFWrapper):
         - Rollball-v1
         """
         return self._current_observation['extra']['ball_to_goal_pos']
+    
+    @property
+    def current_goal_pos(self):
+        return self._current_observation['extra']['goal_pos']
 
     # auxiliary functions for language feedback
     @property
@@ -190,12 +181,6 @@ class ManiskillWrapper(LLFWrapper):
         pass
 
     def _step_pull_cube_tool(self, action):
-        pass
-
-    def _step_lift_peg_upright(self, action):
-        pass
-
-    def _step_stack_cube(self, action):
         pass
 
     def _step_peg_insertion_side(self, action):
@@ -396,42 +381,151 @@ class ManiskillWrapper(LLFWrapper):
         observation = self._format_obs(observation)
         return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated.cpu().item(), truncated.cpu().item(), info
 
-    def _step_plug_charger(self, action):
-        pass
-
-    def _step_pusht(self, action):
-        observation, reward, terminated, truncated, info = self.env.step(action)
-
-        feedback_type = self._feedback_type
-        
-        self._current_observation = observation
-
-        if 'fp' in feedback_type:
-            expert_action = self.expert_action
-            self._prev_expert_action = expert_action.copy()
-
-        feedback = Feedback()
-        if 'r' in feedback_type:
-            feedback.r = self.format(r_feedback, reward=np.round(reward, 3))
-        if 'hp' in feedback_type:
-            _feedback = None
-            feedback.hp = _feedback
-        if 'hn' in feedback_type:
-            _feedback = None
-            feedback.hn = _feedback
-        if 'fp' in feedback_type:
-            feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(expert_action))
-
-        observation = self._format_obs(observation)
-        return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated.cpu().item(), truncated.cpu().item(), info
-
     def _step_roll_ball(self, action):
+        # Env Step
         observation, reward, terminated, truncated, info = self.env.step(action)
 
         feedback_type = self._feedback_type
+
+        # Environment Features
+        goal_pos = self.current_goal_pos.squeeze(0)
+        prev_tcp_pose = self.current_tcp_pose.squeeze(0)
+        prev_ball_pose = self.current_ball_pose.squeeze(0)
+        prev_tcp_to_ball_pos = self.current_tcp_to_ball_pos.squeeze(0)
+        prev_tcp_to_ball_dist = torch.norm(prev_tcp_to_ball_pos)
+        prev_ball_to_goal_pos = goal_pos - prev_ball_pose[:3]
         
         self._current_observation = observation
 
+        current_tcp_pose = self.current_tcp_pose.squeeze(0)
+        current_ball_pose = self.current_ball_pose.squeeze(0)
+        current_tcp_to_ball_pos = self.current_tcp_to_ball_pos.squeeze(0)
+        current_tcp_to_ball_dist = torch.norm(current_tcp_to_ball_pos)
+        current_goal_pos = self.current_goal_pos.squeeze(0)
+        current_ball_to_goal_pos = goal_pos - current_ball_pose[:3]
+        current_ball_vel = self.current_ball_vel.squeeze(0)
+        
+
+        # Prerequisites for staging, action, and recommendation feedbacks.
+        """
+        1. Ball not reached: Move to ball.
+        2. Ball reached and ball before not reached: Move to before ball.
+        3. Ball not rolled: Push the ball toward the goal.
+        4. Ball rolled out: Ball is rolled.
+        """
+
+        ball_reached = current_tcp_to_ball_dist < self.ball_reached_threshold
+        ball_before_reached = current_tcp_pose[1] - current_ball_pose[1] > self.before_ball_reached_threshold
+        ball_rolled_in_hand = ball_reached and ball_before_reached and torch.norm(current_ball_vel) > self.ball_rolled_threshold
+        ball_rolled_out = not ball_rolled_in_hand and current_ball_pose[1] < self.ball_rolled_out_threshold and current_ball_vel[1] < 0
+
+        vel_degree_diff = angle_between_vectors_deg(current_ball_to_goal_pos, current_ball_vel)
+        ball_to_target_rad_diff_threshold = torch.arcsin(torch.clamp((self.goal_radius + self.ball_radius) / torch.norm(current_ball_to_goal_pos), min=-1, max=1))
+
+        if ball_rolled_out:
+            _stage_feedback = self.format(roll_ball_prompts.ball_rolled_out_feedback)
+
+            moving_away = abs(vel_degree_diff) > ball_to_target_rad_diff_threshold
+
+            _reason_feedback = self.format(roll_ball_prompts.ball_not_rolling_toward_goal) \
+                    if moving_away else self.format(roll_ball_prompts.ball_rolling_toward_goal)
+            
+            _recommend_feedback = []
+
+        elif not ball_reached and not ball_before_reached:
+            _stage_feedback = self.format(roll_ball_prompts.reach_ball_and_before_feedback)
+
+            moving_away = prev_tcp_to_ball_dist < current_tcp_to_ball_dist and prev_tcp_pose[1] > current_tcp_pose[1]
+
+            _reason_feedback = self.format(roll_ball_prompts.moving_away_from_ball_and_forward_reason) \
+                    if moving_away else self.format(roll_ball_prompts.moving_to_ball_and_before_reason)
+
+            moving_away_axis = [cttbp > pttbp + COMPARE_THRESHOLD for cttbp, pttbp in zip(current_tcp_to_ball_pos, prev_tcp_to_ball_pos)]
+
+            moving_away_axis[1] = prev_tcp_pose[1] > current_tcp_pose[1]
+            diff = current_tcp_to_ball_pos - prev_tcp_to_ball_pos
+            diff[1] = current_tcp_pose[1] - prev_tcp_pose[1]
+
+            moving_away_direction = move_direction_converter(diff)
+            moving_away_degree = move_degree_adverb_converter(diff)
+    
+        elif not ball_reached and ball_before_reached:
+            
+            _stage_feedback = self.format(roll_ball_prompts.reach_ball_feedback)
+            
+            moving_away = prev_tcp_to_ball_dist < current_tcp_to_ball_dist
+
+            _reason_feedback = self.format(roll_ball_prompts.moving_away_from_ball_reason) \
+                    if moving_away else self.format(roll_ball_prompts.moving_to_ball_reason)
+
+            moving_away_axis = [cttbp > pttbp + COMPARE_THRESHOLD for cttbp, pttbp in zip(current_tcp_to_ball_pos, prev_tcp_to_ball_pos)]
+            diff = current_tcp_to_ball_pos - prev_tcp_to_ball_pos
+            moving_away_direction = move_direction_converter(diff)
+            moving_away_degree = move_degree_adverb_converter(diff)
+
+        elif ball_reached and not ball_before_reached:
+
+            _stage_feedback = self.format(roll_ball_prompts.reach_ball_before_feedback)
+            
+            moving_away = current_tcp_pose[2] < prev_tcp_pose[2] # It should move up and then move back
+
+            _reason_feedback = self.format(roll_ball_prompts.push_ball_in_wrong_direction_warning_reason) \
+                    if moving_away else self.format(roll_ball_prompts.repositioning_before_ball_reason)
+
+            moving_away_axis = [False, False, moving_away]
+            diff = current_tcp_pose - prev_tcp_pose
+            moving_away_direction = move_direction_converter(diff)
+            moving_away_degree = move_degree_adverb_converter(diff)
+
+        elif ball_reached and ball_before_reached:
+
+            _stage_feedback = self.format(roll_ball_prompts.roll_ball_feedback)
+
+            moving_away1 = prev_tcp_to_ball_dist < current_tcp_to_ball_dist and torch.norm(current_ball_vel) < self.ball_rolled_threshold
+            moving_away2 = abs(vel_degree_diff) > ball_to_target_rad_diff_threshold
+
+            if moving_away1:
+                _reason_feedback = self.format(roll_ball_prompts.moving_away_from_ball_reason)
+            elif moving_away2:
+                _reason_feedback = self.format(roll_ball_prompts.ball_not_rolling_toward_goal)
+            else:
+                _reason_feedback = self.format(roll_ball_prompts.ball_rolling_toward_goal)
+
+            moving_away = moving_away1 or moving_away2
+
+            if moving_away2:
+                moving_away_axis = [moving_away, current_ball_vel[1] > 0, False]
+                moving_away_direction = move_direction_converter(0.1 * current_ball_to_goal_pos / torch.norm(current_ball_to_goal_pos))
+                moving_away_degree = move_degree_adverb_converter(0.1 * current_ball_to_goal_pos / torch.norm(current_ball_to_goal_pos))
+            else:
+                moving_away_axis = [cttbp > pttbp + COMPARE_THRESHOLD for cttbp, pttbp in zip(current_tcp_to_ball_pos, prev_tcp_to_ball_pos)]
+                diff = current_tcp_to_ball_pos - prev_tcp_to_ball_pos
+                moving_away_direction = move_direction_converter(diff)
+                moving_away_degree = move_degree_adverb_converter(diff)
+
+        elif ball_rolled_in_hand:
+
+            _stage_feedback = self.format(roll_ball_prompts.roll_ball_feedback)
+
+            moving_away = abs(vel_degree_diff) > ball_to_target_rad_diff_threshold
+
+            _reason_feedback = self.format(roll_ball_prompts.ball_not_rolling_toward_goal) \
+                    if moving_away else self.format(roll_ball_prompts.ball_rolling_toward_goal)
+
+            moving_away_axis = [moving_away, current_ball_vel[1] > 0, False]
+            moving_away_direction = move_direction_converter(0.1 * current_ball_to_goal_pos / torch.norm(current_ball_to_goal_pos))
+            moving_away_degree = move_degree_adverb_converter(0.1 * current_ball_to_goal_pos / torch.norm(current_ball_to_goal_pos))
+
+        else:
+            raise ValueError("Impossible circumstance for roll ball.")
+        
+        if not ball_rolled_out:
+            _recommend_feedback = [
+                self.format(move_recommend_templates, direction=direction, degree=degree)
+                for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree) if away
+            ]
+
+        # Set actions
         if 'fp' in feedback_type:
             expert_action = self.expert_action
             self._prev_expert_action = expert_action.copy()
@@ -439,11 +533,21 @@ class ManiskillWrapper(LLFWrapper):
         feedback = Feedback()
         if 'r' in feedback_type:
             feedback.r = self.format(r_feedback, reward=np.round(reward, 3))
-        if 'hp' in feedback_type:
-            _feedback = None
+        if 'hp' in feedback_type and not moving_away:
+            _feedback = self.concatenate_sentences(
+                stage_feedback = _stage_feedback,
+                action_feedback = self.format(hp_feedback, reason=_reason_feedback),
+                reco_feedback = _recommend_feedback,
+                action_positive = True,
+            )
             feedback.hp = _feedback
-        if 'hn' in feedback_type:
-            _feedback = None
+        if 'hn' in feedback_type and moving_away:
+            _feedback = self.concatenate_sentences(
+                stage_feedback = _stage_feedback,
+                action_feedback = self.format(hn_feedback, reason=_reason_feedback),
+                reco_feedback = _recommend_feedback,
+                action_positive = False,
+            )
             feedback.hn = _feedback
         if 'fp' in feedback_type:
             feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(expert_action))

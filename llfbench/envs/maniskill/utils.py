@@ -59,3 +59,35 @@ def quaternion_rotation_difference(q1, q2):
     q_rel = quaternion_multiply(q1_inv, q2)
     
     return quaternion_to_euler(q_rel)
+
+def angle_between_vectors_deg(base, ref, normal=[0, 0, 1]):
+    
+    base = torch.tensor(base, dtype=torch.float32)
+    ref = torch.tensor(ref, dtype=torch.float32)
+    normal = torch.tensor(normal, dtype=torch.float32)
+
+    base_norm = torch.norm(base)
+    ref_norm = torch.norm(ref)
+
+    dot = torch.dot(base, ref)
+    cross = torch.cross(base, ref)
+
+    angle_rad = torch.acos(torch.clamp(dot / (base_norm * ref_norm), -1.0, 1.0))
+    sign = torch.sign(torch.dot(normal, cross))
+
+    return angle_rad * sign
+
+def quaternion_to_axis_angle(q):
+    q = torch.tensor(q, dtype=torch.float32)
+    w, x, y, z = q
+    theta = 2 * torch.acos(torch.clamp(w, -1.0, 1.0))
+    
+    sin_half_theta = torch.sqrt(1 - w * w)
+    
+    # Avoid division by zero
+    if sin_half_theta.item() < 1e-6:
+        axis = torch.tensor([1.0, 0.0, 0.0])
+    else:
+        axis = torch.tensor([x, y, z]) / sin_half_theta
+
+    return axis, theta
