@@ -32,7 +32,7 @@ class ManiskillWrapper(LLFWrapper):
     INSTRUCTION_TYPES = ('b') #('b', 'p', 'c')
     FEEDBACK_TYPES = ('r', 'hp', 'hn', 'fp')
 
-    def __init__(self, env, instruction_type, feedback_type):
+    def __init__(self, env, instruction_type, feedback_type, debug: bool = False):
         super().__init__(env, instruction_type, feedback_type)
         # load the scripted policy
         self._policy_name = f"solve{self.env.env_name}"[:-3] # remove version postfix
@@ -49,6 +49,7 @@ class ManiskillWrapper(LLFWrapper):
 
         # self.p_control_time_out = 20 # timeout of the position tracking (for convergnece of P controller)
         # self.p_control_threshold = 1e-4 # the threshold for declaring goal reaching (for convergnece of P controller)
+        self.debug = debug
         self.control_relative_position = False
         self._current_observation = None
         self._prev_expert_action = None
@@ -57,7 +58,7 @@ class ManiskillWrapper(LLFWrapper):
             self._step = self._step_pull_cube_tool
         elif self.env.env_name == 'PegInsertionSide-v1':
             self._step = self._step_peg_insertion_side
-            self.peg_reached_threshold = 5e-2
+            self.peg_reached_threshold_z = 2e-2
             self.peg_moved_threshold = 1e-6
             self.peg_aligned_threshold = 1e-1 
             self.box_hole_peg_reached_threshold = 2.5e-1 
@@ -210,13 +211,14 @@ class ManiskillWrapper(LLFWrapper):
         4. Peg reached the hole: Rotate the wrist to align the peg to the hole.
         5. Peg Aligned and Peg reached the hole: Insert the peg into the hole firmly.
         """
+        peg_half_len = torch.norm(peg_half_size)
         current_tcp_to_peg_pos = current_peg_pose[:3] - current_tcp_pose[:3]
         prev_tcp_to_peg_pos = prev_peg_pose[:3] - prev_tcp_pose[:3]
         current_tcp_to_peg_dist = torch.norm(current_tcp_to_peg_pos)
         prev_tcp_to_peg_dist = torch.norm(prev_tcp_to_peg_pos)
 
         peg_reached = torch.norm(current_peg_pose[:3] - prev_peg_pose[:3]) > self.peg_moved_threshold \
-                        and current_tcp_to_peg_dist < self.peg_reached_threshold 
+                        and current_tcp_to_peg_dist < peg_half_len and abs(current_tcp_to_peg_pos[2]) < self.peg_reached_threshold_z
         peg_gripped = peg_reached and action[-1] < 0 # Gripper grasp, the last dimension of action is negative
 
         current_peg_hole_angle = abs(quaternion_angle(current_peg_pose[-4:], box_hole_pose[-4:]))
@@ -229,8 +231,8 @@ class ManiskillWrapper(LLFWrapper):
         prev_box_hole_to_peg_pos = prev_peg_pose[:3] - box_hole_pose[:3]
         current_box_hole_peg_dist = torch.norm(current_box_hole_to_peg_pos)
         prev_box_hole_peg_dist = torch.norm(prev_box_hole_to_peg_pos)
-        box_hole_peg_reached = peg_gripped and current_box_hole_peg_dist < self.box_hole_peg_reached_threshold
-        box_hole_peg_inserted = peg_aligned and box_hole_peg_reached and current_box_hole_peg_dist < self.box_hole_peg_inserted_threshold
+        box_hole_peg_reached = peg_gripped and current_box_hole_peg_dist < peg_half_len * 2
+        box_hole_peg_inserted = peg_aligned and box_hole_peg_reached and current_box_hole_peg_dist < peg_half_len + COMPARE_THRESHOLD
 
         if not peg_reached:
             _stage_feedback = self.format(peg_insertion_side_prompts.reach_peg_feedback)
@@ -240,9 +242,9 @@ class ManiskillWrapper(LLFWrapper):
                                 if moving_away else self.format(peg_insertion_side_prompts.moving_to_peg_reason)
             close_gripper = False
 
-            moving_away_axis = [cttpp > pttpp + COMPARE_THRESHOLD for cttpp, pttpp in zip(current_tcp_to_peg_pos, prev_tcp_to_peg_pos)]
-            moving_away_direction = move_direction_converter(prev_tcp_to_peg_pos - current_tcp_to_peg_pos)
-            moving_away_degree = move_degree_adverb_converter(prev_tcp_to_peg_pos - current_tcp_to_peg_pos)
+            moving_away_axis = [cttpp > pttpp for cttpp, pttpp in zip(torch.abs(current_tcp_to_peg_pos), torch.abs(prev_tcp_to_peg_pos))]
+            moving_away_direction = move_direction_converter(current_tcp_to_peg_pos - prev_tcp_to_peg_pos)
+            moving_away_degree = move_degree_adverb_converter(current_tcp_to_peg_pos - prev_tcp_to_peg_pos)
 
             turning_away_axis = [False, False, False]
             turning_away_direction = ["", "", ""]
@@ -251,14 +253,14 @@ class ManiskillWrapper(LLFWrapper):
             if not peg_gripped:
                 _stage_feedback = self.format(peg_insertion_side_prompts.grip_peg_feedback)
 
-                moving_away = current_tcp_to_peg_dist > prev_tcp_to_peg_dist
+                moving_away = current_tcp_to_peg_dist > prev_tcp_to_peg_dist - COMPARE_THRESHOLD
                 _reason_feedback = self.format(peg_insertion_side_prompts.moving_away_from_peg_reason) \
                                     if moving_away else self.format(peg_insertion_side_prompts.moving_to_peg_reason)
                 close_gripper = True
 
-                moving_away_axis = [cttpp > pttpp + COMPARE_THRESHOLD for cttpp, pttpp in zip(torch.abs(current_tcp_to_peg_pos), torch.abs(prev_tcp_to_peg_pos))]
-                moving_away_direction = move_direction_converter(prev_tcp_to_peg_pos - current_tcp_to_peg_pos)
-                moving_away_degree = move_degree_adverb_converter(prev_tcp_to_peg_pos - current_tcp_to_peg_pos)
+                moving_away_axis = [cttpp > pttpp for cttpp, pttpp in zip(torch.abs(current_tcp_to_peg_pos), torch.abs(prev_tcp_to_peg_pos))]
+                moving_away_direction = move_direction_converter(current_tcp_to_peg_pos - prev_tcp_to_peg_pos)
+                moving_away_degree = move_degree_adverb_converter(current_tcp_to_peg_pos - prev_tcp_to_peg_pos)
 
                 turning_away_axis = [False, False, False]
                 turning_away_direction = ["", "", ""]
@@ -268,22 +270,22 @@ class ManiskillWrapper(LLFWrapper):
                     _stage_feedback = self.format(peg_insertion_side_prompts.align_peg_and_reach_hole_feedback)
 
                     # If it's not aligned and not reached, then if the current action helps in either way, it shouldn't be moving away
-                    moving_away = current_peg_hole_angle > prev_peg_hole_angle and current_box_hole_peg_dist > prev_box_hole_peg_dist
+                    moving_away = current_peg_hole_angle > prev_peg_hole_angle and current_box_hole_peg_dist > prev_box_hole_peg_dist - COMPARE_THRESHOLD
                     _reason_feedback = self.format(peg_insertion_side_prompts.moving_away_from_hole_and_misalign_hole_reason) \
                                         if moving_away else self.format(peg_insertion_side_prompts.moving_to_hole_and_align_hole_reason)
                     close_gripper = action[-1] > 0
 
-                    moving_away_axis = [cbhpp > pbhpp + COMPARE_THRESHOLD for cbhpp, pbhpp in zip(torch.abs(current_box_hole_to_peg_pos), torch.abs(prev_box_hole_to_peg_pos))]
-                    moving_away_direction = move_direction_converter(prev_box_hole_to_peg_pos - current_box_hole_to_peg_pos)
-                    moving_away_degree = move_degree_adverb_converter(prev_box_hole_to_peg_pos - current_box_hole_to_peg_pos)
+                    moving_away_axis = [cbhpp > pbhpp for cbhpp, pbhpp in zip(torch.abs(current_box_hole_to_peg_pos), torch.abs(prev_box_hole_to_peg_pos))]
+                    moving_away_direction = move_direction_converter(current_box_hole_to_peg_pos - prev_box_hole_to_peg_pos)
+                    moving_away_degree = move_degree_adverb_converter(current_box_hole_to_peg_pos - prev_box_hole_to_peg_pos)
 
-                    turning_away_axis = [cpherd > ppherd + COMPARE_THRESHOLD for cpherd, ppherd in zip(torch.abs(current_peg_hole_euler_rot_diff), torch.abs(prev_peg_hole_euler_rot_diff))]
-                    turning_away_direction = turn_direction_converter(prev_peg_hole_euler_rot_diff - current_peg_hole_euler_rot_diff)
-                    turning_away_degree = turn_degree_adverb_converter(prev_peg_hole_euler_rot_diff - current_peg_hole_euler_rot_diff)
+                    turning_away_axis = [cpherd > ppherd for cpherd, ppherd in zip(torch.abs(current_peg_hole_euler_rot_diff), torch.abs(prev_peg_hole_euler_rot_diff))]
+                    turning_away_direction = turn_direction_converter(current_peg_hole_euler_rot_diff - prev_peg_hole_euler_rot_diff)
+                    turning_away_degree = turn_degree_adverb_converter(current_peg_hole_euler_rot_diff - prev_peg_hole_euler_rot_diff)
                 elif not peg_aligned:
                     _stage_feedback = self.format(peg_insertion_side_prompts.align_peg_feedback)
 
-                    moving_away = current_peg_hole_angle > prev_peg_hole_angle
+                    moving_away = current_peg_hole_angle > prev_peg_hole_angle - COMPARE_THRESHOLD
                     _reason_feedback = self.format(peg_insertion_side_prompts.misalign_hole_reason) \
                                         if moving_away else self.format(peg_insertion_side_prompts.align_hole_reason)
                     close_gripper = action[-1] > 0
@@ -292,20 +294,20 @@ class ManiskillWrapper(LLFWrapper):
                     moving_away_direction = ["", "", ""]
                     moving_away_degree = ["", "", ""]
 
-                    turning_away_axis = [cpherd > ppherd + COMPARE_THRESHOLD for cpherd, ppherd in zip(torch.abs(current_peg_hole_euler_rot_diff), torch.abs(prev_peg_hole_euler_rot_diff))]
-                    turning_away_direction = turn_direction_converter(prev_peg_hole_euler_rot_diff - current_peg_hole_euler_rot_diff)
-                    turning_away_degree = turn_degree_adverb_converter(prev_peg_hole_euler_rot_diff - current_peg_hole_euler_rot_diff)
+                    turning_away_axis = [cpherd > ppherd for cpherd, ppherd in zip(torch.abs(current_peg_hole_euler_rot_diff), torch.abs(prev_peg_hole_euler_rot_diff))]
+                    turning_away_direction = turn_direction_converter(current_peg_hole_euler_rot_diff - prev_peg_hole_euler_rot_diff)
+                    turning_away_degree = turn_degree_adverb_converter(current_peg_hole_euler_rot_diff - prev_peg_hole_euler_rot_diff)
                 elif not box_hole_peg_reached:
                     _stage_feedback = self.format(peg_insertion_side_prompts.reach_hole_feedback)
 
-                    moving_away = current_box_hole_peg_dist > prev_box_hole_peg_dist
+                    moving_away = current_box_hole_peg_dist > prev_box_hole_peg_dist - COMPARE_THRESHOLD
                     _reason_feedback = self.format(peg_insertion_side_prompts.moving_away_from_hole_reason) \
                                         if moving_away else self.format(peg_insertion_side_prompts.moving_to_hole_reason)
                     close_gripper = action[-1] > 0
 
-                    moving_away_axis = [cbhpp > pbhpp + COMPARE_THRESHOLD for cbhpp, pbhpp in zip(torch.abs(current_box_hole_to_peg_pos), torch.abs(prev_box_hole_to_peg_pos))]
-                    moving_away_direction = move_direction_converter(prev_box_hole_to_peg_pos - current_box_hole_to_peg_pos)
-                    moving_away_degree = move_degree_adverb_converter(prev_box_hole_to_peg_pos - current_box_hole_to_peg_pos)
+                    moving_away_axis = [cbhpp > pbhpp for cbhpp, pbhpp in zip(torch.abs(current_box_hole_to_peg_pos), torch.abs(prev_box_hole_to_peg_pos))]
+                    moving_away_direction = move_direction_converter(current_box_hole_to_peg_pos - prev_box_hole_to_peg_pos)
+                    moving_away_degree = move_degree_adverb_converter(current_box_hole_to_peg_pos - prev_box_hole_to_peg_pos)
 
                     turning_away_axis = [False, False, False]
                     turning_away_direction = ["", "", ""]
@@ -314,14 +316,14 @@ class ManiskillWrapper(LLFWrapper):
                     if not box_hole_peg_inserted:
                         _stage_feedback = self.format(peg_insertion_side_prompts.insert_peg_to_hole_feedback)
 
-                        moving_away = current_box_hole_peg_dist > prev_box_hole_peg_dist
+                        moving_away = current_box_hole_peg_dist > prev_box_hole_peg_dist - COMPARE_THRESHOLD
                         _reason_feedback = self.format(peg_insertion_side_prompts.pulling_out_from_hole_reason) \
                                             if moving_away else self.format(peg_insertion_side_prompts.inserting_into_hole_reason)
                         close_gripper = action[-1] > 0
 
-                        moving_away_axis = [cbhpp > pbhpp + COMPARE_THRESHOLD for cbhpp, pbhpp in zip(torch.abs(current_box_hole_to_peg_pos), torch.abs(prev_box_hole_to_peg_pos))]
-                        moving_away_direction = move_direction_converter(prev_box_hole_to_peg_pos - current_box_hole_to_peg_pos)
-                        moving_away_degree = move_degree_adverb_converter(prev_box_hole_to_peg_pos - current_box_hole_to_peg_pos)
+                        moving_away_axis = [cbhpp > pbhpp for cbhpp, pbhpp in zip(torch.abs(current_box_hole_to_peg_pos), torch.abs(prev_box_hole_to_peg_pos))]
+                        moving_away_direction = move_direction_converter(current_box_hole_to_peg_pos - prev_box_hole_to_peg_pos)
+                        moving_away_degree = move_degree_adverb_converter(current_box_hole_to_peg_pos - prev_box_hole_to_peg_pos)
 
                         turning_away_axis = [False, False, False]
                         turning_away_direction = ["", "", ""]
@@ -365,6 +367,13 @@ class ManiskillWrapper(LLFWrapper):
                 action_positive = True,
                 gripper_feedback = self.format(close_gripper_feedback) if close_gripper else None
             )
+
+            if self.debug:
+                _feedback = f"""
+{abs(current_tcp_to_peg_pos[2])},
+peg_half_size: {torch.norm(peg_half_size)},               
+current_tcp_to_peg_dist: {current_tcp_to_peg_dist}."""
+                
             feedback.hp = _feedback
         if 'hn' in feedback_type and moving_away:
             _feedback = self.concatenate_sentences(
@@ -374,6 +383,13 @@ class ManiskillWrapper(LLFWrapper):
                 action_positive = False,
                 gripper_feedback = self.format(close_gripper_feedback) if close_gripper else None
             )
+
+            if self.debug:
+                _feedback = f"""
+{abs(current_tcp_to_peg_pos[2])},
+peg_half_size: {torch.norm(peg_half_size)},               
+current_tcp_to_peg_dist: {current_tcp_to_peg_dist}."""
+                
             feedback.hn = _feedback
         if 'fp' in feedback_type:
             feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(expert_action))
@@ -440,7 +456,7 @@ class ManiskillWrapper(LLFWrapper):
             _reason_feedback = self.format(roll_ball_prompts.moving_away_from_ball_and_forward_reason) \
                     if moving_away else self.format(roll_ball_prompts.moving_to_ball_and_before_reason)
 
-            moving_away_axis = [cttbp > pttbp + COMPARE_THRESHOLD for cttbp, pttbp in zip(current_tcp_to_ball_pos, prev_tcp_to_ball_pos)]
+            moving_away_axis = [cttbp > pttbp for cttbp, pttbp in zip(current_tcp_to_ball_pos, prev_tcp_to_ball_pos)]
 
             moving_away_axis[1] = prev_tcp_pose[1] > current_tcp_pose[1]
             diff = current_tcp_to_ball_pos - prev_tcp_to_ball_pos
@@ -458,7 +474,7 @@ class ManiskillWrapper(LLFWrapper):
             _reason_feedback = self.format(roll_ball_prompts.moving_away_from_ball_reason) \
                     if moving_away else self.format(roll_ball_prompts.moving_to_ball_reason)
 
-            moving_away_axis = [cttbp > pttbp + COMPARE_THRESHOLD for cttbp, pttbp in zip(current_tcp_to_ball_pos, prev_tcp_to_ball_pos)]
+            moving_away_axis = [cttbp > pttbp for cttbp, pttbp in zip(current_tcp_to_ball_pos, prev_tcp_to_ball_pos)]
             diff = current_tcp_to_ball_pos - prev_tcp_to_ball_pos
             moving_away_direction = move_direction_converter(diff)
             moving_away_degree = move_degree_adverb_converter(diff)
@@ -498,7 +514,7 @@ class ManiskillWrapper(LLFWrapper):
                 moving_away_direction = move_direction_converter(0.1 * current_ball_to_goal_pos / torch.norm(current_ball_to_goal_pos))
                 moving_away_degree = move_degree_adverb_converter(0.1 * current_ball_to_goal_pos / torch.norm(current_ball_to_goal_pos))
             else:
-                moving_away_axis = [cttbp > pttbp + COMPARE_THRESHOLD for cttbp, pttbp in zip(current_tcp_to_ball_pos, prev_tcp_to_ball_pos)]
+                moving_away_axis = [cttbp > pttbp for cttbp, pttbp in zip(current_tcp_to_ball_pos, prev_tcp_to_ball_pos)]
                 diff = current_tcp_to_ball_pos - prev_tcp_to_ball_pos
                 moving_away_direction = move_direction_converter(diff)
                 moving_away_degree = move_degree_adverb_converter(diff)
