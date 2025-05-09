@@ -55,3 +55,10 @@ register(
     max_episode_steps=200,
     reward_threshold=1.0,
 )
+
+register(
+    id='llf-pusht-image-v0',
+    entry_point='llfbench.envs.pusht.pusht_image_env:PushTImageEnv',
+    max_episode_steps=200,
+    reward_threshold=1.0,
+)
