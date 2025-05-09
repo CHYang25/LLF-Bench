@@ -1,5 +1,5 @@
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 
 import collections
 import numpy as np
@@ -131,11 +131,12 @@ class PushTEnv(gym.Env):
         coverage = intersection_area / goal_area
         reward = np.clip(coverage / self.success_threshold, 0, 1)
         done = coverage > self.success_threshold
+        truncated = False
 
         observation = self._get_obs()
         info = self._get_info()
 
-        return observation, reward, done, info
+        return observation, reward, done, truncated, info
 
     def render(self, mode):
         return self._render_frame(mode)

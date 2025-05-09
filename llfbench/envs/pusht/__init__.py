@@ -1,5 +1,6 @@
-from gym.envs.registration import register
-import gym
+from gymnasium.envs.registration import register
+import gymnasium as gym
+from gymnasium.wrappers import TimeLimit
 import numpy as np
 from llfbench.envs.pusht.wrapper import PushTWrapper
 import random
@@ -45,7 +46,7 @@ def make_env(env_name,
         gym.logger.set_level(gym.logger.ERROR)
         warnings.filterwarnings("ignore")
 
-    return PushTWrapper(env, instruction_type=instruction_type, feedback_type=feedback_type)
+    return TimeLimit(PushTWrapper(env, instruction_type=instruction_type, feedback_type=feedback_type), max_episode_steps=200)
 
 
 register(
@@ -53,13 +54,4 @@ register(
     entry_point='llfbench.envs.pusht.pusht_keypoints_env:PushTKeypointsEnv',
     max_episode_steps=200,
     reward_threshold=1.0,
-    kwargs=dict(
-        env_name='pusht-keypoints-v0', 
-        feedback_type='a', 
-        instruction_type='b', 
-        visual=False, 
-        obs_mode='state_dict', 
-        seed=0, 
-        warning=True, 
-    )
 )

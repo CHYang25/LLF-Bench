@@ -1,5 +1,6 @@
 from typing import Dict, Sequence, Union, Optional
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 from llfbench.envs.pusht.pusht_env import PushTEnv
 from llfbench.envs.pusht.pymunk_keypoint_manager import PymunkKeypointManager
 import numpy as np
