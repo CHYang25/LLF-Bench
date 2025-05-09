@@ -1,6 +1,6 @@
 import gymnasium as gym
 from gymnasium import spaces
-from llfbench.envs.pusht.pusht_env import PushTEnv
+from llfbench.envs.pusht.pusht.pusht_env import PushTEnv
 import numpy as np
 import cv2
 
