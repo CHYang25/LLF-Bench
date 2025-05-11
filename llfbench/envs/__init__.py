@@ -7,6 +7,7 @@ from llfbench.envs import poem
 from llfbench.envs import highway
 from llfbench.envs import block_pushing
 from llfbench.envs import maniskill
+from llfbench.envs import pusht
 
 if importlib.util.find_spec('metaworld'):
     from llfbench.envs import metaworld
