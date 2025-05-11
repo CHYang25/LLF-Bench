@@ -24,7 +24,8 @@ direction_desc_list = [
 ]
 
 def direction_converter(difference: np.array):
+    # TODO: need to check the difference
     return [
         random.choice(direction_desc_list[i][int(difference[i] < 0)])
-        for i in range(3)
+        for i in range(2)
     ]
