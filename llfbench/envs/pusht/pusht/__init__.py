@@ -14,3 +14,10 @@ register(
     max_episode_steps=200,
     reward_threshold=1.0
 )
+
+register(
+    id='PushT-v0',
+    entry_point='llfbench.envs.pusht.pusht.pusht_all_env:PushTEnv',
+    max_episode_steps=200,
+    reward_threshold=1.0
+)
