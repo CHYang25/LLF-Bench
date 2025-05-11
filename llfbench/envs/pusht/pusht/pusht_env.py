@@ -84,8 +84,8 @@ class PushTEnv(gym.Env):
         self.latest_action = None
         self.reset_to_state = reset_to_state
     
-    def reset(self):
-        seed = self._seed
+    def reset(self, seed=None, options=None):
+        seed = self._seed if seed is None else seed
         self._setup()
         if self.block_cog is not None:
             self.block.center_of_gravity = self.block_cog
@@ -104,7 +104,8 @@ class PushTEnv(gym.Env):
         self._set_state(state)
 
         observation = self._get_obs()
-        return observation
+        info = self._get_info()
+        return observation, info
 
     def step(self, action):
         dt = 1.0 / self.sim_hz
