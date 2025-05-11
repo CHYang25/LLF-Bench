@@ -5,30 +5,50 @@ import numpy as np
 from llfbench.envs.pusht.wrapper import PushTWrapper
 import random
 import warnings
-import llfbench.envs.pusht
+from llfbench.envs.pusht.pusht.pusht_keypoints_env import PushTKeypointsEnv
+from llfbench.envs.pusht.pusht.pusht_image_env import PushTImageEnv
 
 def make_env(env_name,
              instruction_type='b',
              feedback_type='a',
              visual=False,
-             obs_mode='state',
              seed=0,
              warning=True,
              ):
-    env = gym.make(
-        env_name,
-        obs_mode=obs_mode,
-        control_mode="pd_joint_delta_pos", # This is fixed
-        num_envs=1, 
-        render_mode="rgb_array",
-    )
+    if env_name == "llf-pusht-keypoints-v0":
+        env = PushTKeypointsEnv(
+            legacy=False,
+            block_cog=None, 
+            damping=None,
+            render_size=96,
+            keypoint_visible_rate=1.0, 
+            agent_keypoints=False,
+            draw_keypoints=False,
+            reset_to_state=None,
+            render_action=True,
+            local_keypoint_map=None, 
+            color_map=None
+        )
+    else:  
+        env = PushTImageEnv(
+            legacy=False,
+            block_cog=None, 
+            damping=None,
+            render_size=96,
+            keypoint_visible_rate=1.0, 
+            agent_keypoints=False,
+            draw_keypoints=False,
+            reset_to_state=None,
+            render_action=True,
+            local_keypoint_map=None, 
+            color_map=None
+        )
 
     class Wrapper(gym.Wrapper):
         def __init__(self, env):
             super().__init__(env)
             self._render_video = False
             self.visual = visual
-            assert self.env.render_mode == "rgb_array"
 
         @property
         def env_name(self):
@@ -51,14 +71,30 @@ def make_env(env_name,
 
 register(
     id='llf-pusht-keypoints-v0',
-    entry_point='llfbench.envs.pusht.pusht_keypoints_env:PushTKeypointsEnv',
+    entry_point='llfbench.envs.pusht:make_env',
     max_episode_steps=200,
     reward_threshold=1.0,
+    kwargs=dict(
+        env_name="llf-pusht-keypoints-v0", 
+        feedback_type='a', 
+        instruction_type='b', 
+        visual=False, 
+        seed=0, 
+        warning=True, 
+    )
 )
 
 register(
     id='llf-pusht-image-v0',
-    entry_point='llfbench.envs.pusht.pusht_image_env:PushTImageEnv',
+    entry_point='llfbench.envs.pusht:make_env',
     max_episode_steps=200,
     reward_threshold=1.0,
+    kwargs=dict(
+        env_name="llf-pusht-image-v0", 
+        feedback_type='a', 
+        instruction_type='b', 
+        visual=False, 
+        seed=0, 
+        warning=True, 
+    )
 )
