@@ -124,7 +124,7 @@ class PushTKeypointsEnv(PushTEnv):
         return obs
     
     
-    def _render_frame(self, mode):
+    def _render_frame(self, mode="rgb_array"):
         img = super()._render_frame(mode)
         if self.draw_keypoints:
             self.kp_manager.draw_keypoints(

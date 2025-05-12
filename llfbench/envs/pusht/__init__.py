@@ -53,6 +53,12 @@ def make_env(env_name,
                 np.random.seed(seed)
             return self.env.reset(seed=seed, options=options)
         
+        def render(self, mode='rgb_array'):
+            if self.visual:
+                return self.env.render(mode=mode)
+            else:
+                return None
+        
     env = Wrapper(env)
     
     if not warning:

@@ -139,7 +139,7 @@ class PushTEnv(gym.Env):
 
         return observation, reward, done, truncated, info
 
-    def render(self, mode):
+    def render(self, mode="rgb_array"):
         return self._render_frame(mode)
 
     def teleop_agent(self):
@@ -181,7 +181,7 @@ class PushTEnv(gym.Env):
             'n_contacts': n_contact_points_per_step}
         return info
 
-    def _render_frame(self, mode):
+    def _render_frame(self, mode="rgb_array"):
 
         if self.window is None and mode == "human":
             pygame.init()
