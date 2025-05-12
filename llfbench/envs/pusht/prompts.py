@@ -1,10 +1,12 @@
 pt_instruction = (
-    "Your job is to use a circular end-effector (blue) to push a T-shaped block (gray) to a fixed target (red) using point contacts in a 2-D environment setting. " \
-    "Observations are provided in one of two formats: either RGB images with end-effector location, or nine 2D keypoints representing the T-shaped block along with the same proprioceptive data." \
-    "You will get observations provided in one of the predefined formats and in the form of json strings. " \
-    "Your actions are a 2-dim vector, which are the desired target pose from the policy " \
-    "Specifically, you should executes low-level motion using a PD (Proportional-Derivative) controller. Given the desired target position from the policy (i.e., the action), the controller computes an acceleration based on the position error and the current velocity of the end-effector. The velocity is then updated using the computed acceleration and the timestep." \
-    "Your objective is to provide control signals to the circular end-effector to achieve the task's goal state over multiple time steps. "
+"""
+Your job is to use a circular end-effector (blue) to push a T-shaped block (gray) to a fixed target (red) using point contacts in a 2-D environment setting.
+Observations are provided in one of two formats: either RGB images with end-effector location, or nine 2D keypoints representing the T-shaped block along with the same proprioceptive data.
+You will get observations provided in one of the predefined formats and in the form of json strings.
+Your actions are a 2-dim vector, which are the desired target pose from the policy.
+Specifically, you should executes low-level motion using a PD (Proportional-Derivative) controller. Given the desired target position from the policy (i.e., the action), the controller computes an acceleration based on the position error and the current velocity of the end-effector. The velocity is then updated using the computed acceleration and the timestep.
+Your objective is to provide control signals to the circular end-effector to achieve the task's goal state over multiple time steps.
+""",
 )
 
 r_feedback = (
