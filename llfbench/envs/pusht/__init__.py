@@ -35,13 +35,6 @@ def make_env(env_name,
             block_cog=None, 
             damping=None,
             render_size=96,
-            keypoint_visible_rate=1.0, 
-            agent_keypoints=False,
-            draw_keypoints=False,
-            reset_to_state=None,
-            render_action=True,
-            local_keypoint_map=None, 
-            color_map=None
         )
 
     class Wrapper(gym.Wrapper):
