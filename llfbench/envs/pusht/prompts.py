@@ -1,5 +1,5 @@
 pt_instruction = (
-    "Your job is to use a 2-DoF cursor to push a T-shaped block (gray) to a fixed target (red) with a circular end-effector (blue) in a 2-D environment setting. " \
+    "Your job is to use a circular end-effector (blue) to push a T-shaped block (gray) to a fixed target (red) using point contacts in a 2-D environment setting. " \
     "Observations are provided in one of two formats: either RGB images with end-effector location, or nine 2D keypoints representing the T-shaped block along with the same proprioceptive data." \
     "You will get observations provided in one of the predefined formats and in the form of json strings. " \
     "Your actions are a 2-dim vector, which are the desired target pose from the policy " \
