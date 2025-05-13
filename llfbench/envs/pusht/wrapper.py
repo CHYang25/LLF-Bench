@@ -7,7 +7,7 @@ from llfbench.envs.pusht import task_feedback
 from llfbench.envs.pusht.utils_prompts.degree_prompts import degree_adverb_converter
 from llfbench.envs.pusht.utils_prompts.direction_prompts import direction_converter
 from llfbench.envs.pusht.utils_prompts.conjunction_prompts import positive_conjunctions_sampler, negative_conjunctions_sampler
-from llfbench.envs.pusht.utils_prompts.recommend_prompts import recommend_templates_sampler, recommend_templates
+from llfbench.envs.pusht.utils_prompts.recommend_prompts import recommend_templates_sampler
 import importlib
 import json
 from textwrap import dedent, indent
@@ -29,13 +29,13 @@ class PushTWrapper(LLFWrapper):
         # load the scripted policy
         self._policy_name = f"solve{self.env.env_name}"[:-3] # remove version postfix
 
-        # if 'fp' in feedback_type:
-        #     self._policy = getattr(solve_policy, self._policy_name)(
-        #         env = env,
-        #         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        #     ) # Expert policy is a function not class
-        # else:
-        #     self._policy = None
+        if 'fp' in feedback_type:
+            self._policy = getattr(solve_policy, self._policy_name)(
+                env = env,
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            ) # Expert policy is a function not class
+        else:
+            self._policy = None
         self.debug = debug
         self.control_relative_position = False
         self._current_observation = None
@@ -82,7 +82,7 @@ class PushTWrapper(LLFWrapper):
     def expert_action(self):
         # Flatten current observation first
         obs_state = spaces.flatten(self.env.observation_space, self._current_observation)
-        expert_action = self.ms_policy.get_action(obs_state).squeeze(0).cpu().detach().numpy()
+        expert_action = self.pt_policy.get_action(obs_state).squeeze(0).cpu().detach().numpy()
         return expert_action
     
     # step functions for keypoints-based observation
@@ -126,7 +126,7 @@ class PushTWrapper(LLFWrapper):
             direction = direction_converter(self._current_agent_position - prev_agent_posi)
             degree = degree_adverb_converter(self._current_agent_position - prev_agent_posi)
             _recommend_feedback = [
-                self.format(recommend_templates, direction=direction, degree=degree)
+                recommend_templates_sampler().format(degree=degree, direction=direction)
                 for away, direction, degree in zip(moving_axis, direction, degree) if away
             ]
         else:
@@ -134,7 +134,7 @@ class PushTWrapper(LLFWrapper):
             direction = direction_converter(prev_agent_posi - self._current_agent_position)
             degree = degree_adverb_converter(prev_agent_posi - self._current_agent_position)
             _recommend_feedback = [
-                self.format(recommend_templates, direction=direction, degree=degree)
+                recommend_templates_sampler().format(degree=degree, direction=direction)
                 for away, direction, degree in zip(moving_axis, direction, degree) if away
             ]
 
