@@ -1,22 +1,34 @@
 import random
 
-recommend_templates = [
-    "move {direction} {degree}.",
-    "please move {direction} {degree}.",
-    "you should move {direction} {degree}.",
-    "ensure you move {direction} {degree}.",
-    "it is recommended to move {direction} {degree}.",
-    "make sure to move {direction} {degree}.",
-    "be sure to move {direction} {degree}.",
-    "try to move {direction} {degree}.",
-    "consider moving {direction} {degree}.",
-    "proceed to move {direction} {degree}.",
-    "adjust by moving {direction} {degree}.",
-    "take care to move {direction} {degree}.",
-    "opt to move {direction} {degree}.",
-    "plan to move {direction} {degree}.",
-    "execute a move {direction} {degree}.",
-    "aim to move {direction} {degree}.",
+move_recommend_templates = [
+    "the block should move {direction} {degree}.",
+    "the block should move {direction} {degree}.",
+    "the block should move {direction} {degree}.",
+    "ensure the block to move {direction} {degree}.",
+    "the block is recommended to move {direction} {degree}.",
+    "make sure to let the block move {direction} {degree}.",
+    "be sure to let the block move {direction} {degree}.",
+    "try to move the block {direction} {degree}.",
+    "consider moving the block {direction} {degree}.",
+    "proceed to move the block {direction} {degree}.",
+    "adjust by moving the block {direction} {degree}.",
+    "take care to move the block {direction} {degree}.",
+    "opt to move the block {direction} {degree}.",
+    "plan to move the block {direction} {degree}.",
+    "execute a move the block {direction} {degree}.",
+    "aim to move the block {direction} {degree}.",
 ]
 
-recommend_templates_sampler = lambda: random.choice(recommend_templates)
+turn_recommend_templates = [
+    "the block should turn {direction} {degree}.",
+    "try to turn the block {direction} {degree}.",
+    "it is a good idea to turn the block {direction} {degree}.",
+    "you might want to turn the block {direction} {degree}.",
+    "it would be smart to turn the block {direction} {degree}.",
+    "turning the block {direction} {degree} could work well.",
+    "you could aim to turn the block {direction} {degree}.",
+    "it would help to turn the block {direction} {degree}.",
+]
+
+move_recommend_templates_sampler = lambda: random.choice(move_recommend_templates)
+turn_recommend_templates_sampler = lambda: random.choice(turn_recommend_templates)
