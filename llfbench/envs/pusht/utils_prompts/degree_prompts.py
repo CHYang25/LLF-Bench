@@ -52,17 +52,17 @@ degree_adverbs = {
     ]
 }
 
-def degree_adverb_converter(difference: np.array):
-    #TODO: need to confrim the the thresholds
+def move_degree_adverb_converter(difference: np.array):
     degrees = []
     for value in difference:
         value = abs(value)
 
-        if value >= 0 and value < 1e-2:
+        # window size = 512x512
+        if value >= 0 and value < 10:
             desc = random.choice(degree_adverbs["very_low"])
-        elif value >= 1e-2 and value < 3e-2:
+        elif value >= 10 and value < 300:
             desc = random.choice(degree_adverbs["low"])
-        elif value >= 3e-2:
+        elif value >= 300:
             desc = random.choice(degree_adverbs["medium"])
         # elif value >= 5e-2 and value < 8e-2:
         #     desc = random.choice(degree_adverbs["high"])
@@ -73,3 +73,21 @@ def degree_adverb_converter(difference: np.array):
         
         degrees.append(desc)
     return degrees
+
+def turn_degree_adverb_converter(difference: np.array):
+    difference = abs(difference)
+
+    if difference >= 0 and difference < 0.5:
+        desc = random.choice(degree_adverbs["very_low"])
+    elif difference >= 0.5 and difference < 1.57:
+        desc = random.choice(degree_adverbs["low"])
+    elif difference >= 1.57:
+        desc = random.choice(degree_adverbs["medium"])
+    # elif value >= 5e-2 and value < 8e-2:
+    #     desc = random.choice(degree_adverbs["high"])
+    # elif value >= 8e-2 and value < 1e-1:
+    #     desc = random.choice(degree_adverbs["very_high"])
+    # elif value >= 1e-1:
+    #     desc = random.choice(degree_adverbs["highest"])
+        
+    return desc
