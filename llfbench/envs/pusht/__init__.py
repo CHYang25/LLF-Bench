@@ -69,7 +69,7 @@ def make_env(env_name,
 
 
 register(
-    id='llf-pusht-keypoints-v0',
+    id='llf-pusht-pusht-keypoints-v0',
     entry_point='llfbench.envs.pusht:make_env',
     max_episode_steps=200,
     reward_threshold=1.0,
@@ -84,7 +84,7 @@ register(
 )
 
 register(
-    id='llf-pusht-image-v0',
+    id='llf-pusht-pusht-image-v0',
     entry_point='llfbench.envs.pusht:make_env',
     max_episode_steps=200,
     reward_threshold=1.0,
