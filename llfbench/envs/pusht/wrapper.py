@@ -43,6 +43,8 @@ class PushTWrapper(LLFWrapper):
         self._curr_agent_to_block_distance = None
         self._curr_block_to_goal_distance = None
         self._curr_block_to_goal_angle = None
+        self._curr_navigation_steps = 0
+        self._max_navigation_steps = 10  # maximum steps limit for navigating to the next contact point
         self.is_moved_to_goal = False
         self.is_aligned_with_goal = False
         self.mode = 'rgb_array'
@@ -83,7 +85,7 @@ class PushTWrapper(LLFWrapper):
     def expert_action(self):
         # Flatten current observation first
         obs_state = spaces.flatten(self.env.observation_space, self._current_observation)
-        expert_action = self.pt_policy.get_action(obs_state)
+        expert_action = self.pt_policy.get_action(obs_state) # TODO: check whether we want to use action chunks
         return expert_action['action'][0].cpu().numpy()
     
     def compute_angle_diff(self, goal_angle, block_angle):
@@ -104,10 +106,7 @@ class PushTWrapper(LLFWrapper):
         prev_block_to_goal_angle = self._curr_block_to_goal_angle
         prev_agent_to_block_distance = self._curr_agent_to_block_distance
         prev_is_moved_to_goal = self.is_moved_to_goal
-        # prev_is_moved_away_from_goal = self.is_moved_away_from_goal
         prev_is_aligned_with_goal = self.is_aligned_with_goal
-        # prev_is_misaligned_with_goal = self.is_misaligned_with_goal
-        # prev_agent_move_to_the_block = self.agent_move_to_the_block
 
         # current info
         self._current_observation = observation
@@ -133,6 +132,10 @@ class PushTWrapper(LLFWrapper):
         1. Tranlate the block towards the goal
         2. Rotate the block towards the goal
         """
+
+        # set current total navigation steps as 0 if eef contacts the block
+        if info['n_contacts'] > 0 and self._curr_navigation_steps > 0:
+            self._curr_navigation_steps = 0
         
         # stage feedback
         if info['n_contacts'] == 0:
@@ -174,12 +177,18 @@ class PushTWrapper(LLFWrapper):
             _reason_feedback = self.format(task_feedback.misaligned_T_shaped_block_reason)
         else:
             # determine hp or hn
-            # if the previous action is good and the eef leaves, it is bad to navigate to the new contact point
+            # 1. if the previous action is good and the eef leaves, it is bad to navigate to the new contact point
+            # 2. Spending too much time navigating is also bad.
             if (prev_is_moved_to_goal or prev_is_aligned_with_goal):
                 positive_hindsight = False
                 _reason_feedback = self.format(task_feedback.leave_the_proper_contact_posi_reason)
+            elif self._curr_navigation_steps > self._max_navigation_steps:
+                positive_hindsight = False
+                _reason_feedback = self.format(task_feedback.long_navigation_reason)
             else:
                 _reason_feedback = self.format(task_feedback.move_to_proper_contact_posi_reason)
+            # count navigation steps
+            self._curr_navigation_steps += 1
 
         # Set actions
         if 'fp' in feedback_type:
