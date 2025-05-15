@@ -165,3 +165,7 @@ alfworld_data
 # Maniskill
 runs
 wandb
+
+# Push-T checkpoints
+pusht_keypoints_checkpoints
+pusht_image_checkpoints
