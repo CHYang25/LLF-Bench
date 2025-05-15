@@ -123,3 +123,15 @@ leave_the_proper_contact_posi_reason = (
     "the end-effector is disengaging from a beneficial contact area",
     "the end-effector is relocating away from the beneficial point of contact"
 )
+
+long_navigation_reason = (
+    "the end-effector takes too long to move to the next contact point",
+    "the end-effector spends an excessive amount of time traveling to the next contact location",
+    "too much time is consumed by the end-effector getting to the next contact point",
+    "the end-effector requires far too much time to navigate to its next point of contact",
+    "the end-effector delays excessively before arriving at the next contact point",
+    "the end-effector's journey to the next contact point takes longer than necessary",
+    "the end-effector wastes too much time reaching the next contact point",
+    "the end-effector is inefficiently slow in moving toward the next contact point",
+    "the end-effector is overly slow when transitioning to the subsequent contact point"
+)
