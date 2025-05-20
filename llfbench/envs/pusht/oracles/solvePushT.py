@@ -1,15 +1,41 @@
 import gymnasium as gym
 import gymnasium.spaces as spaces
 from llfbench.envs.pusht.oracles.base_workspace import BaseWorkspace
+from typing import Dict, Callable, List, Union
 import numpy as np
 import torch
 import hydra
 import dill
 import re
 
+def dict_apply(
+        x: Dict[str, Union[torch.Tensor, np.ndarray]], 
+        func: Callable[[torch.Tensor], torch.Tensor]
+        ) -> Dict[str, torch.Tensor]:
+    if not isinstance(x, dict):
+        return func(x)
+
+    result = dict()
+    for key, value in x.items():
+        if isinstance(value, dict):
+            result[key] = dict_apply(value, func)
+        elif isinstance(value, (torch.Tensor, np.ndarray)):
+            result[key] = func(value)
+        else:
+            result[key] = value
+    return result
+
 class solvePushT:
 
-    def __init__(self, env, checkpoint_dir, device='cuda', seed=None, debug=False, vis=False):
+    def __init__(self, 
+                 env, 
+                 checkpoint_dir, 
+                 device='cuda', 
+                 seed=None, 
+                 debug=False, 
+                 vis=False,
+                 past_action=False):
+        
         self.env = env
 
         self.observation_space = env.observation_space
@@ -41,13 +67,38 @@ class solvePushT:
         self.n_action = n_action
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.policy = self.policy.to(self.device)
+        self.n_obs_steps = cfg.n_obs_steps
+        self.n_action_steps = cfg.n_action_steps
+        self.n_latency_steps = cfg.n_latency_steps
+        self.past_action = past_action
 
-    def get_action(self, state):
-        if isinstance(state, np.ndarray):
-            state = torch.from_numpy(state).to(self.device)
-            state = {'obs': state[:20], 'obj_mask': state[20:]}
-            if len(state['obs'].shape) == 1:
-                state['obs'] = state['obs'].unsqueeze(0).unsqueeze(0)
+    def get_action(self, obs, past_action=None):
+        obs = obs.copy()
+        obs = obs.reshape(1, 1, -1)
+        Do = obs.shape[-1] // 2
+        # create obs dict
+        np_obs_dict = {
+            # handle n_latency_steps by discarding the last n_latency_steps
+            'obs': obs[...,:self.n_obs_steps,:Do].astype(np.float32),
+            'obs_mask': obs[...,:self.n_obs_steps,Do:] > 0.5
+        }
+        if self.past_action and (past_action is not None):
+            # TODO: not tested
+            np_obs_dict['past_action'] = past_action[
+                :,-(self.n_obs_steps-1):].astype(np.float32)
+        
+        # device transfer
+        obs_dict = dict_apply(np_obs_dict, 
+            lambda x: torch.from_numpy(x).to(
+                device=self.device))
+        
         with torch.no_grad():
-            action_dict = self.policy.predict_action(state)
-        return action_dict
+            action_dict = self.policy.predict_action(obs_dict)
+        
+        # device_transfer
+        np_action_dict = dict_apply(action_dict,
+            lambda x: x.detach().to('cpu').numpy())
+        # handle latency_steps, we discard the first n_latency_steps actions
+            # to simulate latency
+        action = np_action_dict['action'][:,self.n_latency_steps:]
+        return action

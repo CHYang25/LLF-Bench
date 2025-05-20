@@ -85,8 +85,8 @@ class PushTWrapper(LLFWrapper):
     def expert_action(self):
         # Flatten current observation first
         obs_state = spaces.flatten(self.env.observation_space, self._current_observation)
-        expert_action = self.pt_policy.get_action(obs_state) # TODO: check whether we want to use action chunks
-        return expert_action['action'][0].cpu().numpy()
+        expert_action = self.pt_policy.get_action(obs_state)
+        return expert_action
     
     def compute_angle_diff(self, goal_angle, block_angle):
         return (goal_angle - block_angle + np.pi) % (2 * np.pi) - np.pi
