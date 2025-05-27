@@ -45,6 +45,7 @@ setuptools.setup(
         # reco
         'requests==2.32.0',
         'omegaconf'
+        'huggingface-hub==0.26.2',
     ],
     extras_require={
         'metaworld': ['metaworld@git+https://github.com/Farama-Foundation/Metaworld.git@c822f28#egg=metaworld'],
