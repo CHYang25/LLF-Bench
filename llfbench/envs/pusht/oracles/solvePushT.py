@@ -47,9 +47,9 @@ class solvePushT:
         # load checkpoint
         payload = torch.load(open(checkpoint_dir, 'rb'), pickle_module=dill)
         cfg = payload['cfg']
-        cfg._target_ = re.sub(r'diffusion_policy', 'llmbc', cfg._target_)
-        cfg.policy._target_ = re.sub(r'diffusion_policy', 'llmbc', cfg.policy._target_)
-        cfg.policy.model._target_ = re.sub(r'diffusion_policy', 'llmbc', cfg.policy.model._target_)
+        cfg._target_ = re.sub('diffusion_policy.workspace', 'llfbench.envs.pusht.oracles', cfg._target_)
+        cfg.policy._target_ = re.sub('diffusion_policy.policy', 'llfbench.envs.pusht.oracles', cfg.policy._target_)
+        cfg.policy.model._target_ = re.sub('diffusion_policy.model.diffusion', 'llfbench.envs.pusht.oracles', cfg.policy.model._target_)
         cls = hydra.utils.get_class(cfg._target_)
         workspace = cls(cfg)
         workspace: BaseWorkspace
