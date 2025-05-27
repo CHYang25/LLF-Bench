@@ -44,7 +44,7 @@ setuptools.setup(
         "highway-env",
         # reco
         'requests==2.32.0',
-        'omegaconf'
+        'omegaconf',
         'huggingface-hub==0.26.2',
     ],
     extras_require={
