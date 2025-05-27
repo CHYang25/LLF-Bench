@@ -33,7 +33,7 @@ class PushTWrapper(LLFWrapper):
             self._policy = getattr(solve_policy, self._policy_name)(
                 env = env,
                 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            ) # Expert policy is a function not class
+            )
         else:
             self._policy = None
         self.debug = debug
@@ -44,7 +44,7 @@ class PushTWrapper(LLFWrapper):
         self._curr_block_to_goal_distance = None
         self._curr_block_to_goal_angle = None
         self._curr_navigation_steps = 0
-        self._max_navigation_steps = 10  # maximum steps limit for navigating to the next contact point
+        self._max_navigation_steps = 40  # maximum steps limit for navigating to the next contact point
         self.is_moved_to_goal = False
         self.is_aligned_with_goal = False
         self.mode = 'rgb_array'
@@ -115,8 +115,8 @@ class PushTWrapper(LLFWrapper):
         self._curr_agent_to_block_distance = np.linalg.norm(info['block_pose'][:-1] - info['pos_agent'])
         self.is_moved_to_goal = False if prev_block_to_goal_distance == None else self._curr_block_to_goal_distance < prev_block_to_goal_distance
         self.is_moved_away_from_goal = False if prev_block_to_goal_distance == None else self._curr_block_to_goal_distance > prev_block_to_goal_distance
-        self.is_aligned_with_goal =  False if prev_block_to_goal_angle == None else self._curr_block_to_goal_angle < prev_block_to_goal_angle
-        self.is_misaligned_with_goal =  False if prev_block_to_goal_angle == None else self._curr_block_to_goal_angle > prev_block_to_goal_angle
+        self.is_aligned_with_goal =  False if prev_block_to_goal_angle == None else abs(self._curr_block_to_goal_angle) < abs(prev_block_to_goal_angle)
+        self.is_misaligned_with_goal =  False if prev_block_to_goal_angle == None else abs(self._curr_block_to_goal_angle) > abs(prev_block_to_goal_angle)
         self.agent_move_to_the_block = True if prev_block_to_goal_angle == None else self._curr_agent_to_block_distance < prev_agent_to_block_distance
         self._goal_pose = info['goal_pose']
         self._curr_block_pose = info['block_pose']
@@ -158,17 +158,22 @@ class PushTWrapper(LLFWrapper):
         ] + [
             turn_recommend_templates_sampler().format(direction=turn_direction, degree=turn_degree)
         ]
-
+        # import pdb; pdb.set_trace()
         # reason feedback
         positive_hindsight = True
         if self.is_aligned_with_goal and self.is_moved_to_goal:
             _reason_feedback_move = self.format(task_feedback.move_T_shaped_block_to_the_goal_reason)
             _reason_feedback_align = self.format(task_feedback.align_T_shaped_block_and_the_goal_region_reason)
-            _reason_feedback = _reason_feedback_move[:-1] + ' and ' + _reason_feedback_align[17:]
+            _reason_feedback = _reason_feedback_move + ' and ' + _reason_feedback_align[17:]
         elif self.is_moved_to_goal:
             _reason_feedback = self.format(task_feedback.move_T_shaped_block_to_the_goal_reason)
         elif self.is_aligned_with_goal:
             _reason_feedback = self.format(task_feedback.align_T_shaped_block_and_the_goal_region_reason)
+        elif self.is_moved_away_from_goal and self.is_misaligned_with_goal:
+            positive_hindsight = False
+            _reason_feedback_move_away = self.format(task_feedback.move_T_shaped_block_away_from_the_goal_reason)
+            _reason_feedback_misalign = self.format(task_feedback.misaligned_T_shaped_block_reason)
+            _reason_feedback = _reason_feedback_move_away + ' and ' + _reason_feedback_misalign[17:]
         elif self.is_moved_away_from_goal:
             positive_hindsight = False
             _reason_feedback = self.format(task_feedback.move_T_shaped_block_away_from_the_goal_reason)
