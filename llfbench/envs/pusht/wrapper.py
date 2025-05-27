@@ -39,10 +39,7 @@ class PushTWrapper(LLFWrapper):
         self.debug = debug
         self.control_relative_position = False
         self._current_observation = None
-        self._prev_expert_action = None
-        self._curr_agent_to_block_distance = None
-        self._curr_block_to_goal_distance = None
-        self._curr_block_to_goal_angle = None
+        self._current_info = None
         self._curr_navigation_steps = 0
         self._max_navigation_steps = 40  # maximum steps limit for navigating to the next contact point
         self.is_moved_to_goal = False
@@ -73,23 +70,40 @@ class PushTWrapper(LLFWrapper):
     
     @property
     def current_observation_keypoints(self):
-        """ This is a cache of the latest (raw) observation. """
+        """ This is a cache of the latest (raw) keypoints. """
         return self._current_observation[:18]
-    
+
     @property
     def current_agent_position(self):
-        """ This is a cache of the latest (raw) observation. """
+        """ This is a cache of the latest (raw) agent position. """
         return self._current_observation[18:20]
+    
+    @property
+    def current_info(self):
+        """ This is a cache of the latest (raw) info. """
+        return self._current_info
 
+    @property
+    def _curr_block_to_goal_distance(self):
+        return np.linalg.norm(self._current_info['goal_pose'][:-1] - self._current_info['block_pose'][:-1])
+    
+    @property
+    def _curr_block_to_goal_angle(self):
+        return self._compute_angle_diff(self._current_info['goal_pose'][-1], self._current_info['block_pose'][-1])
+    
+    @property
+    def _curr_agent_to_block_distance(self):
+        return np.linalg.norm(self._current_info['block_pose'][:-1] - self._current_info['pos_agent'])
+
+    def _compute_angle_diff(self, goal_angle, block_angle):
+        return (goal_angle - block_angle + np.pi) % (2 * np.pi) - np.pi
+    
     # auxiliary functions for language feedback
     def expert_action(self):
         # Flatten current observation first
         obs_state = spaces.flatten(self.env.observation_space, self._current_observation)
         expert_action = self.pt_policy.get_action(obs_state)
         return expert_action
-    
-    def compute_angle_diff(self, goal_angle, block_angle):
-        return (goal_angle - block_angle + np.pi) % (2 * np.pi) - np.pi
     
     # step functions for keypoints-based observation
     def _step_keypoints(self, action):
@@ -99,25 +113,21 @@ class PushTWrapper(LLFWrapper):
         feedback_type = self._feedback_type
         
         # Environment Features
-        # previous info
-        prev_agent_posi = self.current_agent_position
-        prev_block_kps = self.current_observation_keypoints
+        # previous information
         prev_block_to_goal_distance = self._curr_block_to_goal_distance
         prev_block_to_goal_angle = self._curr_block_to_goal_angle
         prev_agent_to_block_distance = self._curr_agent_to_block_distance
         prev_is_moved_to_goal = self.is_moved_to_goal
         prev_is_aligned_with_goal = self.is_aligned_with_goal
 
-        # current info
+        # current information
         self._current_observation = observation
-        self._curr_block_to_goal_distance = np.linalg.norm(info['goal_pose'][:-1] - info['block_pose'][:-1])
-        self._curr_block_to_goal_angle = self.compute_angle_diff(info['goal_pose'][-1], info['block_pose'][-1])
-        self._curr_agent_to_block_distance = np.linalg.norm(info['block_pose'][:-1] - info['pos_agent'])
-        self.is_moved_to_goal = False if prev_block_to_goal_distance == None else self._curr_block_to_goal_distance < prev_block_to_goal_distance
-        self.is_moved_away_from_goal = False if prev_block_to_goal_distance == None else self._curr_block_to_goal_distance > prev_block_to_goal_distance
-        self.is_aligned_with_goal =  False if prev_block_to_goal_angle == None else abs(self._curr_block_to_goal_angle) < abs(prev_block_to_goal_angle)
-        self.is_misaligned_with_goal =  False if prev_block_to_goal_angle == None else abs(self._curr_block_to_goal_angle) > abs(prev_block_to_goal_angle)
-        self.agent_move_to_the_block = True if prev_block_to_goal_angle == None else self._curr_agent_to_block_distance < prev_agent_to_block_distance
+        self._current_info = info
+        self.is_moved_to_goal = self._curr_block_to_goal_distance < prev_block_to_goal_distance
+        self.is_moved_away_from_goal = self._curr_block_to_goal_distance > prev_block_to_goal_distance
+        self.is_aligned_with_goal =  abs(self._curr_block_to_goal_angle) < abs(prev_block_to_goal_angle)
+        self.is_misaligned_with_goal =  abs(self._curr_block_to_goal_angle) > abs(prev_block_to_goal_angle)
+        self.agent_move_to_the_block = self._curr_agent_to_block_distance < prev_agent_to_block_distance
         self._goal_pose = info['goal_pose']
         self._curr_block_pose = info['block_pose']
 
@@ -239,6 +249,7 @@ class PushTWrapper(LLFWrapper):
         # Env Reset
         observation, info = self.env.reset(seed=seed, options=options)
         self._current_observation = observation
+        self._current_info = info
         self._prev_expert_action = None
         observation = self._format_obs()
         task = re.search(r'(.*)-v[0-9]', self.env.env_name).group(1)
