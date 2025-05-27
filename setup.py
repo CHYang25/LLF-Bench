@@ -1,4 +1,19 @@
 import setuptools
+from setuptools.command.install import install
+import os
+from huggingface_hub import snapshot_download
+
+class PushTCheckpointsInstallCommand(install):
+    def run(self):
+        install.run(self)
+        checkpoint_path = os.path.join(os.getcwd(), "llfbench/envs/pusht/oracles/pusht_keypoints_checkpoints")
+        os.makedirs(checkpoint_path, exist_ok=True)
+        print(f"Downloading push-T checkpoints from Hugging Face ...")
+        try:
+            snapshot_download(repo_id="LLM-BC/pushT-checkpoints", repo_type="model", local_dir=checkpoint_path)
+            print(f"Checkpoint downloaded successfully to {checkpoint_path}")
+        except Exception as e:
+            print(f"Failed to download checkpoint: {e}")
 
 setuptools.setup(
     name='llfbench',
@@ -37,6 +52,13 @@ setuptools.setup(
         'maniskill': [ 'mani_skill==3.0.0b20' ],
         'blockpushing': [ 
             'tf-agents==0.19.0', 
+        ],
+        'pushT': [
+            'pymunk==6.2.1',
+            'scikit-image==0.19.3'
         ]
+    },
+    cmdclass={
+        'install': PushTCheckpointsInstallCommand
     }
 )
