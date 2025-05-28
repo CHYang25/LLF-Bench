@@ -54,9 +54,10 @@ setuptools.setup(
         'blockpushing': [ 
             'tf-agents==0.19.0', 
         ],
-        'pushT': [
+        'pusht': [
             'pymunk==6.2.1',
-            'scikit-image==0.19.3'
+            'scikit-image==0.19.3',
+            'shapely==1.8.4'
         ]
     },
     cmdclass={
