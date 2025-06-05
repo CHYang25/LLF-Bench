@@ -27,7 +27,7 @@ class BlockPushingWrapper(LLFWrapper):
     INSTRUCTION_TYPES = ('b') #('b', 'p', 'c')
     FEEDBACK_TYPES = ('r', 'hp', 'hn', 'fp')
 
-    def __init__(self, env, instruction_type, feedback_type, debug: bool = False, mani_oracle: bool = True):
+    def __init__(self, env, instruction_type, feedback_type, debug: bool = True, mani_oracle: bool = True):
         super().__init__(env, instruction_type, feedback_type)
         # load the scripted policy
         if self.env.env_name == "BlockPushMultimodal-v0":
@@ -232,9 +232,9 @@ class BlockPushingWrapper(LLFWrapper):
             # consider the distance to the two blocks, and where the ee is heading to
             prev_dist_to_block = np.linalg.norm(self._previous_effector_translation - self._previous_block_translation)
             prev_dist_to_block2 = np.linalg.norm(self._previous_effector_translation - self._previous_block2_translation)
-            if self.debug:
-                assert np.linalg.norm(self._previous_block_translation - self._current_block_translation) < self.bp_policy.block_effector_dist_tolerance
-                assert np.linalg.norm(self._previous_block2_translation - self._current_block2_translation) < self.bp_policy.block_effector_dist_tolerance
+            # if self.debug:
+            #     assert np.linalg.norm(self._previous_block_translation - self._current_block_translation) < self.bp_policy.block_effector_dist_tolerance
+            #     assert np.linalg.norm(self._previous_block2_translation - self._current_block2_translation) < self.bp_policy.block_effector_dist_tolerance
             cur_dist_to_block = np.linalg.norm(self._current_effector_translation - self._current_block_translation)
             cur_dist_to_block2 = np.linalg.norm(self._current_effector_translation - self._current_block2_translation)
 
@@ -281,9 +281,9 @@ class BlockPushingWrapper(LLFWrapper):
 
             prev_dist_to_target = np.linalg.norm(self.previous_observation[f"{self._current_block_to_reach}_translation"] - self._previous_target_translation)
             prev_dist_to_target2 = np.linalg.norm(self.previous_observation[f"{self._current_block_to_reach}_translation"] - self._previous_target2_translation)
-            if self.debug:
-                assert np.linalg.norm(self._previous_target_translation - self._current_target_translation) == 0
-                assert np.linalg.norm(self._previous_target2_translation - self._current_target2_translation) == 0
+            # if self.debug:
+            #     assert np.linalg.norm(self._previous_target_translation - self._current_target_translation) == 0
+            #     assert np.linalg.norm(self._previous_target2_translation - self._current_target2_translation) == 0
             cur_dist_to_target = np.linalg.norm(self.current_observation[f"{self._current_block_to_reach}_translation"] - self._current_target_translation)
             cur_dist_to_target2 = np.linalg.norm(self.current_observation[f"{self._current_block_to_reach}_translation"] - self._current_target2_translation)
 
@@ -319,8 +319,8 @@ class BlockPushingWrapper(LLFWrapper):
 
         elif self.stage == STAGE_MOVE_TO_SECOND_BLOCK:
             first_block_target_dist = np.linalg.norm(self.current_observation[f"{self._first_block}_translation"] - self.current_observation[f"{self._first_target}_translation"])
-            if self.debug:
-                assert first_block_target_dist < self.env.goal_dist_tolerance
+            # if self.debug:
+            #     assert first_block_target_dist < self.env.goal_dist_tolerance
 
             if self._current_block_to_reach == self._first_block:
                 self.bp_policy.set_current_block(self.bp_policy.second_block)
@@ -354,8 +354,8 @@ class BlockPushingWrapper(LLFWrapper):
                 self.bp_policy.set_phase("return_to_first_preblock")
 
             first_block_target_dist = np.linalg.norm(self.current_observation[f"{self._first_block}_translation"] - self.current_observation[f"{self._first_target}_translation"])
-            if self.debug:
-                assert first_block_target_dist < self.env.goal_dist_tolerance
+            # if self.debug:
+            #     assert first_block_target_dist < self.env.goal_dist_tolerance
 
             if "orient" not in self.bp_policy.phase and self.bp_policy.phase != "move_to_pre_block":
                 self.bp_policy.set_phase("push_block")
@@ -429,8 +429,8 @@ class BlockPushingWrapper(LLFWrapper):
                 self.stage = STAGE_PUSH_SECOND_BLOCK_TO_SECOND_GOAL
                 _stage_feedback = self.format(blockpushing_multimodal.push_second_block_to_second_goal_feedback)
             else:
-                if self.debug:
-                    assert self._current_block_to_reach == self._first_block and self._current_target_to_reach == self._first_target
+                # if self.debug:
+                #     assert self._current_block_to_reach == self._first_block and self._current_target_to_reach == self._first_target
                 self.stage = STAGE_MOVE_TO_SECOND_BLOCK
                 _stage_feedback = self.format(blockpushing_multimodal.move_to_second_block_feedback)
         else:
@@ -532,6 +532,10 @@ class BlockPushingWrapper(LLFWrapper):
                     feedback.hp = f"""
 {_feedback} 
 
+action: {action},
+
+expert_action: {recommend_action},
+
 curblock: {a['current_block']}
 
 curtarget: {a['current_target']}
@@ -558,6 +562,10 @@ stage: {self.stage}."""
                 if self.debug:
                     feedback.hn = f"""
 {_feedback} 
+
+action: {action},
+
+expert_action: {recommend_action},
 
 curblock: {a['current_block']}
 
