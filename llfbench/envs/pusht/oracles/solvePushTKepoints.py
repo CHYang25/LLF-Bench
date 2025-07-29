@@ -9,9 +9,7 @@ class solvePushTKeypoints(solvePushT):
 
         super().__init__(
             env, 
-            # checkpoint_dir=os.getcwd()+"/LLF-Bench/llfbench/envs/pusht/oracles/pusht_keypoints_checkpoints/epoch=1100-test_mean_score=0.878.ckpt",
-            checkpoint_dir=os.getcwd()+"/LLF-Bench/llfbench/envs/pusht/oracles/pusht_keypoints_checkpoints/epoch=0100-test_mean_score=0.578.ckpt",
-            # checkpoint_dir=os.getcwd()+"/LLF-Bench/llfbench/envs/pusht/oracles/pusht_keypoints_checkpoints/epoch=0050-test_mean_score=0.143.ckpt",
+            checkpoint_dir=os.getcwd()+"/LLF-Bench/llfbench/envs/pusht/oracles/pusht_keypoints_checkpoints/epoch=1100-test_mean_score=0.878.ckpt",
             device=device,
             seed=seed,
             debug=debug,
