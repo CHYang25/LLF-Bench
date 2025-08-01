@@ -15,7 +15,7 @@ def make_env(env_name,
              seed=0,
              warning=True,
              ):
-    if env_name == "llf-pusht-keypoints-v0":
+    if env_name == "pusht-pusht-keypoints-v0":
         env = PushTKeypointsEnv(
             legacy=False,
             block_cog=None, 
@@ -74,7 +74,7 @@ register(
     max_episode_steps=200,
     reward_threshold=1.0,
     kwargs=dict(
-        env_name="llf-pusht-keypoints-v0", 
+        env_name="pusht-pusht-keypoints-v0", 
         feedback_type='a', 
         instruction_type='b', 
         visual=False, 

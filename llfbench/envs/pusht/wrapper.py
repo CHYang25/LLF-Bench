@@ -27,7 +27,7 @@ class PushTWrapper(LLFWrapper):
     def __init__(self, env, instruction_type, feedback_type, debug: bool = False):
         super().__init__(env, instruction_type, feedback_type)
         # load the scripted policy
-        self._policy_name = "solvePushTKeypoints" if self.env.env_name=='llf-pusht-keypoints-v0' else "solvePushTImage" # remove version postfix
+        self._policy_name = "solvePushTKeypoints" if self.env.env_name=='pusht-pusht-keypoints-v0' else "solvePushTImage" # remove version postfix
 
         if 'fp' in feedback_type:
             self._policy = getattr(solve_policy, self._policy_name)(
@@ -46,7 +46,7 @@ class PushTWrapper(LLFWrapper):
         self.is_aligned_with_goal = False
         self.mode = 'rgb_array'
 
-        if self.env.env_name == 'llf-pusht-keypoints-v0':
+        if self.env.env_name == 'pusht-pusht-keypoints-v0':
             self._step = self._step_keypoints
         else:
             self._step = self._step_image
