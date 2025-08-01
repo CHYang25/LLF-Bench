@@ -235,7 +235,7 @@ class PushTWrapper(LLFWrapper):
         if 'fp' in feedback_type:
             feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(expert_action))
 
-        observation = self._format_obs()
+        observation = self._format_obs(observation)
         return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated, truncated, info
 
     # step functions for image-based observation
@@ -251,14 +251,14 @@ class PushTWrapper(LLFWrapper):
         self._current_observation = observation
         self._current_info = info
         self._prev_expert_action = None
-        observation = self._format_obs()
+        observation = self._format_obs(observation)
         task = re.search(r'(.*)-v[0-9]', self.env.env_name).group(1)
         instruction = self.format(pt_instruction, task=task)
         info['success'] = False
         return dict(instruction=instruction, observation=observation, feedback=None), info
 
-    def _format_obs(self):
-        obs_dict = {'keypoints': self.current_observation_keypoints, 'agent_posi': self.current_agent_position}
+    def _format_obs(self, observation):
+        obs_dict = {'obs': observation}
         text = self.textualize_observation(obs_dict)
         image = (self.env.render(mode=self.mode) if self.env.visual else None)
         return text if image is None else dict(text=text, image=image)
