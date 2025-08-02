@@ -50,7 +50,7 @@ def make_env(env_name,
 
 
 # DATA_SOURCES is a dictionary that contains tasks that an expert planning policy is provided by the Maniskill Benchmark
-for env_name in DATASET_SOURCES.keys():
+for env_name in ["PegInsertionSide-v1", "RollBall-v1"]:
     # default version (backward compatibility)
     register(
         id=f"llf-maniskill-{env_name}",
