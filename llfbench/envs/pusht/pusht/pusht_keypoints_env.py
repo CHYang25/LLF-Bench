@@ -7,6 +7,7 @@ import numpy as np
 
 class PushTKeypointsEnv(PushTEnv):
     def __init__(self,
+            seed=42,
             legacy=False,
             block_cog=None, 
             damping=None,
@@ -24,7 +25,8 @@ class PushTKeypointsEnv(PushTEnv):
             damping=damping,
             render_size=render_size,
             reset_to_state=reset_to_state,
-            render_action=render_action)
+            render_action=render_action,
+            seed = seed)
         ws = self.window_size
 
         if local_keypoint_map is None:
