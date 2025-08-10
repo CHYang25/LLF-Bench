@@ -169,3 +169,4 @@ wandb
 # Push-T checkpoints
 pusht_keypoints_checkpoints
 pusht_image_checkpoints
+.gitattributes
