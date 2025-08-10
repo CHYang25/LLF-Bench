@@ -1,12 +1,13 @@
 import setuptools
-from setuptools.command.install import install
+from setuptools.command.develop import develop
 import os
 from huggingface_hub import snapshot_download
 
-class PushTCheckpointsInstallCommand(install):
+class PushTCheckpointsInstallCommand(develop):
     def run(self):
-        install.run(self)
-        checkpoint_path = os.path.join(os.getcwd(), "llfbench/envs/pusht/oracles/pusht_keypoints_checkpoints")
+        super().run()
+        develop.run(self)
+        checkpoint_path = os.path.join(os.getcwd(), "llfbench/envs/pusht/oracles/")
         os.makedirs(checkpoint_path, exist_ok=True)
         print(f"Downloading push-T checkpoints from Hugging Face ...")
         try:
@@ -57,10 +58,11 @@ setuptools.setup(
         'pusht': [
             'pymunk==6.2.1',
             'scikit-image==0.19.3',
-            'shapely==1.8.4'
+            'shapely==1.8.4',
+            'cffi==1.17.1'
         ]
     },
     cmdclass={
-        'install': PushTCheckpointsInstallCommand
+        'develop': PushTCheckpointsInstallCommand
     }
 )
