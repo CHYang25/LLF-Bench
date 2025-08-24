@@ -133,7 +133,7 @@ class PushTEnv(gym.Env):
         coverage = intersection_area / goal_area
         reward = np.clip(coverage / self.success_threshold, 0, 1)
         done = coverage > self.success_threshold
-        truncated = False
+        truncated = self._get_out_of_bounds()
 
         observation = self._get_obs()
         info = self._get_info()
@@ -154,6 +154,13 @@ class PushTEnv(gym.Env):
                 act = mouse_position
             return act
         return TeleopAgent(act)
+    
+    def _get_out_of_bounds(self):
+        apos = self.agent.position
+        return not( self.bound_min <= apos.x \
+            and apos.x <= self.bound_max \
+                and self.bound_min <= apos.y \
+                    and apos.y <= self.bound_max )
 
     def _get_obs(self):
         obs = np.array(
@@ -303,6 +310,8 @@ class PushTEnv(gym.Env):
             self._add_segment((506, 5), (506, 506), 2),
             self._add_segment((5, 506), (506, 506), 2)
         ]
+        self.bound_min = 5
+        self.bound_max = 506
         self.space.add(*walls)
 
         # Add agent, block, and goal zone.
