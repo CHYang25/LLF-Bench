@@ -30,6 +30,7 @@ setuptools.setup(
         "numpy<1.24.0",
         "tqdm",
         "gymnasium==0.29.1",
+        "gym==0.23.1",
         "parse==1.19.1",
         "openai==0.28",
         "pyautogen==0.1",
@@ -47,6 +48,9 @@ setuptools.setup(
         'requests==2.32.0',
         'omegaconf',
         'huggingface-hub==0.26.2',
+        # d4rl
+        'd4rl',
+        'cython<3',
     ],
     extras_require={
         'metaworld': ['metaworld@git+https://github.com/Farama-Foundation/Metaworld.git@c822f28#egg=metaworld'],
