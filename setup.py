@@ -9,9 +9,22 @@ class PushTCheckpointsInstallCommand(develop):
         develop.run(self)
         checkpoint_path = os.path.join(os.getcwd(), "llfbench/envs/pusht/oracles/")
         os.makedirs(checkpoint_path, exist_ok=True)
-        print(f"Downloading push-T checkpoints from Hugging Face ...")
+        print(f"Downloading pusht-keypoint-v0 checkpoints from Hugging Face ...")
         try:
             snapshot_download(repo_id="LLM-BC/pushT-checkpoints", repo_type="model", local_dir=checkpoint_path)
+            print(f"Checkpoint downloaded successfully to {checkpoint_path}")
+        except Exception as e:
+            print(f"Failed to download checkpoint: {e}")
+
+class ParkingInstallCommand(develop):
+    def run(self):
+        super().run()
+        develop.run(self)
+        checkpoint_path = os.path.join(os.getcwd(), "llfbench/envs/highway/oracles/")
+        os.makedirs(checkpoint_path, exist_ok=True)
+        print(f"Downloading parking-v0 checkpoints from Hugging Face ...")
+        try:
+            snapshot_download(repo_id="LLM-BC/parking-checkpoints", repo_type="model", local_dir=checkpoint_path)
             print(f"Checkpoint downloaded successfully to {checkpoint_path}")
         except Exception as e:
             print(f"Failed to download checkpoint: {e}")
@@ -64,9 +77,14 @@ setuptools.setup(
             'scikit-image==0.19.3',
             'shapely==1.8.4',
             'cffi==1.17.1'
+        ],
+        'parking': [
+            'moviepy==2.2.1',
+            'git+https://github.com/DLR-RM/stable-baselines3'
         ]
     },
     cmdclass={
-        'develop': PushTCheckpointsInstallCommand
+        'develop': PushTCheckpointsInstallCommand,
+        'develop': ParkingInstallCommand
     }
 )
