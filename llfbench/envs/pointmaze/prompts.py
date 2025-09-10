@@ -1,6 +1,6 @@
 
 pm_instruction = (
-    "Your job is to navigate a point in a maze to the target. You will get observations of the point state and the world state in the form of json strings. Your objective is to provide control inputs to the robot to achieve the task's goal state over multiple time steps. Your actions are 2-dim vectors, which control the movement of the robot's end effector in the x and y directions. You action at each step sets the robot's target pose for that step in relative coordinate.",
+    "Your job is to navigate a point in a maze to the target. You will get the position of the point state, the velocity of the point state, and the goal state position in the form of json strings. Your objective is to control the point to achieve the goal over multiple time steps. Your actions are 2-dim vectors, which control the acceleration of the point in the x and y directions.",
 )
 
 r_feedback = (
