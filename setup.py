@@ -80,7 +80,7 @@ setuptools.setup(
         ],
         'parking': [
             'moviepy==2.2.1',
-            'git+https://github.com/DLR-RM/stable-baselines3'
+            'highway@git+https://github.com/DLR-RM/stable-baselines3'
         ]
     },
     cmdclass={
