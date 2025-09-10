@@ -1,12 +1,12 @@
 navigate_direction = [
+    "south",
+    "southeast",
     "east",
     "northeast",
     "north",
     "northwest",
     "west",
-    "southwest",
-    "south",
-    "southeast"
+    "southwest"
 ]
 
 navigate_prompts = [

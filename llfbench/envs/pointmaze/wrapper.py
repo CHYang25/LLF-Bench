@@ -27,8 +27,8 @@ class PointmazeWrapper(LLFWrapper):
         self.maze = env.str_maze_spec
         self._policy = waypoint_controller.WaypointController(self.maze)
         self.moving_away_thres = np.pi / 10
-        self.moving_forward_thres = np.pi / 10
-        self.moving_deccel_thres = np.pi * 4 / 7
+        self.moving_forward_thres = np.pi / 8
+        self.moving_deccel_thres = np.pi * 5 / 7
 
     @property
     def pm_env(self):
@@ -56,8 +56,43 @@ class PointmazeWrapper(LLFWrapper):
         return self.env.unwrapped._target
     
     @property
+    def env_target_grid(self):
+        return (int(round(self.env_target[0])), int(round(self.env_target[1])))
+    
+    @property
+    def current_grid(self):
+        return (int(round(self.current_pos[0])), int(round(self.current_pos[1])))
+    
+    @property
     def next_waypoint(self):
         return self.pm_policy._waypoints[self.pm_policy._waypoint_idx]
+    
+    @property
+    def next_waypoint_grid(self):
+        nw = self.next_waypoint
+        return (int(round(nw[0])), int(round(nw[1])))
+    
+    @property
+    def str_maze(self):
+        # Replace '\' with newline and make goal visible
+        clean_maze = self.maze.replace('\\', '\n').replace('G', 'O')
+        l = len(clean_maze.split('\n')[0]) + 1
+        clean_maze = list(clean_maze)
+
+        agent_pos = self.current_grid[0] * l + self.current_grid[1]
+        target_pos = self.env_target_grid[0] * l + self.env_target_grid[1]
+
+        # Overlap case: mark with yellow #
+        if agent_pos == target_pos:
+            clean_maze[agent_pos] = "\033[33mX\033[0m"  # yellow
+        else:
+            # Mark agent (red A)
+            clean_maze[agent_pos] = "\033[31mA\033[0m"  # red
+            # Mark target (green G)
+            clean_maze[target_pos] = "\033[32mG\033[0m"  # green
+
+        maze = "".join(clean_maze)
+        return maze
     
     def angle_between_vectors(self, a, b):
         # dot product and magnitudes
@@ -84,6 +119,10 @@ class PointmazeWrapper(LLFWrapper):
         feedback_type = self._feedback_type
 
         # calculation for the feedback
+        if self._prev_grid != self.current_grid and self.current_grid != self.next_waypoint_grid:
+            # if the grid changed, and yet the point didn't progress to the next waypoint, it needs recalculation
+            self.pm_policy._new_target(self.current_pos, self.env_target)
+
         expert_action, success = self.pm_policy.get_action(self.current_pos, self.current_vel, self.env_target)
         if self._prev_expert_action is None:
             self._prev_expert_action = expert_action
@@ -100,6 +139,7 @@ class PointmazeWrapper(LLFWrapper):
         # decide if the agent is moving away
         moving_away = self.angle_between_vectors(action, self._prev_expert_action) > self.moving_away_thres
         self._prev_expert_action = expert_action
+        self._prev_grid = self.current_grid
 
         # decide what the agent shoud do. Go straight, turn right, turn left, deccelerate
         acc_theta = self.signed_angle_between_vectors(self.current_vel, expert_action)
@@ -131,7 +171,7 @@ class PointmazeWrapper(LLFWrapper):
         if 'hn' in feedback_type:
             if moving_away:
                 _feedback = _stage_feedback
-                _feedback += negative_conjunctions_sampler() + self.format(hp_feedback)
+                _feedback += negative_conjunctions_sampler() + self.format(hn_feedback)
                 if forward:
                     _feedback += positive_conjunctions_sampler() + self.format(forward_recommend)
                 if deccel:
@@ -153,7 +193,8 @@ class PointmazeWrapper(LLFWrapper):
 
     def _reset(self, seed=None, options=None): # there's no variables for the reset function
         self._current_observation, info = self.env.reset(seed=seed, options=options)
-        self._prev_expert_action = None
+        self._prev_expert_action, _ = self.pm_policy.get_action(self.current_pos, self.current_vel, self.env_target)
+        self._prev_grid = self.current_grid
         observation = self._format_obs(self.current_observation)
         task = re.search(r'(.*)-v[0-9]', self.env.env_name).group(1)
         instruction = self.format(pm_instruction, task=task)

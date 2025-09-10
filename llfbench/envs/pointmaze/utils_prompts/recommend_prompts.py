@@ -16,10 +16,10 @@ deccel_recommend = [
     "reduce your speed.",
     "take it slower.",
     "gradually slow down.",
-    "decrease your speed∂.",
+    "decrease your speed.",
     "start slowing down.",
     "lower your speed.",
-    "slow your pace."
+    "slow your pace.",
     "slow down your speed."
 ]
 
@@ -31,7 +31,7 @@ turn_left_recommend = [
     "please turn left here.",
     "turn left ahead.",
     "turn to the left side.",
-    "make a left at this point."
+    "make a left at this point.",
     "go and make a left turn."
 ]
 
@@ -43,6 +43,6 @@ turn_right_recommend = [
     "please turn right here.",
     "turn right ahead.",
     "turn to the right side.",
-    "make a right at this point."
+    "make a right at this point.",
     "go and make a right turn."
 ]
