@@ -119,7 +119,7 @@ class PointmazeWrapper(LLFWrapper):
         feedback_type = self._feedback_type
 
         # calculation for the feedback
-        if self._prev_grid != self.current_grid and self.current_grid != self.next_waypoint_grid:
+        if self._prev_grid != self.current_grid and self.current_grid != self.next_waypoint_grid and 'fp' in feedback_type:
             # if the grid changed, and yet the point didn't progress to the next waypoint, it needs recalculation
             self.pm_policy._new_target(self.current_pos, self.env_target)
 
