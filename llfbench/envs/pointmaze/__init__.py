@@ -72,7 +72,7 @@ def make_env(env_name,
     return TimeLimit(PointmazeWrapper(env, instruction_type=instruction_type, feedback_type=feedback_type), max_episode_steps=max_episode_steps)
 
 register(
-    id=f"llf-pointmaze-maze2d-large-dense-v0",
+    id=f"llf-pointmaze-maze2d-medium-v0",
     entry_point='llfbench.envs.pointmaze:make_env',
-    kwargs=dict(env_name="maze2d-large-dense-v0", feedback_type='a', instruction_type='b', visual=False, seed=0, warning=True)
+    kwargs=dict(env_name="maze2d-medium-v0", feedback_type='a', instruction_type='b', visual=False, seed=0, warning=True)
 )
