@@ -1,14 +1,14 @@
 
 # This file contains the prompts for the language instructions and feedback.
 
-highway_instruction = (
+hw_instruction = (
     "Your goal is to control a vehicle to park in a desired location, while ensuring that it does not collide with any obstacles or other vehicles. "+
     "You will receive the observation of the vehicle's state as well as the desired parking location represented by an array of numbers. "+
     "The dimensions of the array correspond to [x, y, vx, vy, cos_h, sin_h]. "+
     "That is, the first 2 dimensions denote the position, the next 2 denote the velocity, and the last 2 denote the orientation. "+
     "Your action is a 2-dim vector, where the first dimension controls the throttle input, and the last dimension controls the steering input. "+
-     "Throttle is a number between -5 and 5, representing acceleration in units of m/s^2. "+
-     "Steering is a number between -pi/4 and pi/4, representing the steering angle in radians.",
+    "Throttle is a number between -5 and 5, representing acceleration in units of m/s^2. "+
+    "Steering is a number between -pi/4 and pi/4, representing the steering angle in radians.",
 )
 
 b_instruction = (
@@ -29,13 +29,27 @@ r_feedback = (
     "You have obtained a reward of {reward}.",
 )
 
+fp_feedback = (
+    "You should use the throttle and the steering angle of {expert_action}.",
+    "I recommend that you apply the throttle and the steering angle of {expert_action}.",
+    "You should apply the throttle and the steering angle of {expert_action}.",
+    "I suggest you use the throttle and the steering angle of {expert_action}.",
+    "The throttle and the steering angle of {expert_action} will help you get to the goal faster.",
+    "Try using the throttle and the steering angle of {expert_action}."
+)
+
 hp_feedback = (
-    "This is the best action, as it leads to the highest expected reward.",
+    "This is a good action, as it leads to the higher reward.",
+    "This is a good action, as it moves the vehicle closer to the goal.",
+    "This is a good action, as it helps the vehicle approach the goal.",
+    "This is a good action, as it gets the vehicle nearer to the goal.",
+    "This is a good action, as it brings the vehicle closer to the goal.",
 )
 
 hn_feedback = (
-    "This is a bad action, because the vehicle crashed.",
-    "This action is unfavorable, given that the vehicle crashed.",
-    "This action is problematic, because it caused the vehicle to crash.",
-    "This is an inappropriate action, as it resulted in the vehicle crashing.",
+    "This is a bad action, because the vehicle is moving away from the goal.",
+    "This is a bad action, because the vehicle is not moving towards the goal.",
+    "This is a bad action, because the vehicle is not getting closer to the goal.",
+    "This is a bad action, because the vehicle is diverging from the goal.",
+    "This is a bad action, because the vehicle is not approaching the goal.",
 )
