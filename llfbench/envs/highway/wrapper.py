@@ -109,7 +109,7 @@ class HighwayWrapper(LLFWrapper):
             feedback.r = self.format(r_feedback, reward=reward)
         if 'hp' in feedback_type:  # moved closer to the expert goal
             if not moving_away and not is_crashed:
-                _feedback += positive_conjunctions_sampler() + self.format(hp_feedback)
+                _feedback = self.format(hp_feedback).capitalize()
                 if need_turning:
                     if turn_left:
                         _feedback += positive_conjunctions_sampler() + self.format(turn_left_recommend)
@@ -129,11 +129,17 @@ class HighwayWrapper(LLFWrapper):
                         _feedback += positive_conjunctions_sampler() + self.format(turn_left_recommend)
                     if turn_right:
                         _feedback += positive_conjunctions_sampler() + self.format(turn_right_recommend)
-                feedback.hp = _feedback
+            else:
+                _feedback = None
+
+            if is_crashed:
+                _feedback = self.format(hn_feedback).capitalize() + positive_conjunctions_sampler() + "the car is crashed, you should be more careful."
+
+            feedback.hp = _feedback
 
         if 'hn' in feedback_type:
             if moving_away:
-                _feedback += negative_conjunctions_sampler() + self.format(hn_feedback)
+                _feedback = self.format(hn_feedback).capitalize()
                 if need_turning:
                     if turn_left:
                         _feedback += positive_conjunctions_sampler() + self.format(turn_left_recommend)
@@ -153,9 +159,13 @@ class HighwayWrapper(LLFWrapper):
                         _feedback += positive_conjunctions_sampler() + self.format(turn_left_recommend)
                     if turn_right:
                         _feedback += positive_conjunctions_sampler() + self.format(turn_right_recommend)
-                feedback.hn = _feedback
+            else:
+                _feedback = None
+
             if is_crashed:
-                feedback.hn = "The car is crashed, you should be more careful."
+                _feedback = self.format(hn_feedback).capitalize() + positive_conjunctions_sampler() + "the car is crashed, you should be more careful."
+                
+            feedback.hn = _feedback
 
         if 'fp' in feedback_type and not is_crashed:
             feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(expert_action))
