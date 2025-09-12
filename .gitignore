@@ -166,7 +166,8 @@ alfworld_data
 runs
 wandb
 
-# Push-T checkpoints
+# Oracle checkpoints
+checkpoints
 pusht_keypoints_checkpoints
 pusht_image_checkpoints
 .gitattributes
