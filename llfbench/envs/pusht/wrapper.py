@@ -288,18 +288,18 @@ class PushTWrapper(LLFWrapper):
                 for vk,vv in v.items():
                     assert not isinstance(vv, dict)
                     if isinstance(vv, np.ndarray):
-                        obs_dict[vk] = np.array2string(v)
+                        obs_dict[vk] = np.array2string(v, precision=10)
                     elif isinstance(vv, torch.Tensor):
                         obs_dict[vk] = str(vv.flatten().tolist()).replace(',', '')
                     else: # it's a scalar
-                        obs_dict[vk] = f"{vv}"
+                        obs_dict[vk] = f"{vv:.10f}"
                     
             elif isinstance(v, np.ndarray):
-                obs_dict[k] = np.array2string(v)
+                obs_dict[k] = np.array2string(v, precision=10)
             elif isinstance(v, torch.Tensor):
                 obs_dict[k] = str(v.flatten().tolist()).replace(',', '')
             else: # it's a scalar
-                obs_dict[k] = f"{v}"
+                obs_dict[k] = f"{v:.10f}"
         observation_text = json.dumps(obs_dict)
         return observation_text
     
@@ -309,4 +309,4 @@ class PushTWrapper(LLFWrapper):
         # f"delta x: {action[0]:.2f}, delta y:{action[1]:.2f}, delta z:{action[2]:.2f}, gripper state:{action[3]:.1f}"
         # or another action text format if the action isn't a delta.
         # TODO should not be the raw action
-        return np.array2string(action)
+        return np.array2string(action, precision=10)
