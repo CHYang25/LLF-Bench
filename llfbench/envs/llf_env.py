@@ -271,7 +271,9 @@ class LLFWrapper(gym.Wrapper):
             np.random.seed(seed)  # for paraphrasing
         observation, info = self._reset(seed=seed, options=options)
         self.obs_check(observation)
-        assert observation['feedback'] is None, "The feedback must be None in the initial observation."
+        if observation['feedback'] is not None:
+            observation['feedback'] = self._verbalize_feedback(observation['feedback'])
+        # assert observation['feedback'] is None, "The feedback must be None in the initial observation."
         assert observation['instruction'] is not None, "The instruction must be provided in the initial observation."
         assert info['success'] is False, "The info['success'] must be False in the initial observation."
         return observation, info
