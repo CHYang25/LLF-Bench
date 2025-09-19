@@ -12,43 +12,19 @@ import numpy as np
 
 degree_adverbs = {
     "very_low": [
-        "gently",          # Minimal force, soft touch
-        "softly",          # Light pressure, subtle motion
-        "carefully",       # Precise, cautious adjustment
-        "lightly",         # Barely perceptible force
-        "delicately",      # Fine, fragile handling
-        "precisely",       # Exact, minimal deviation
-        "cautiously",      # Slow, deliberate care
-        "subtly",          # Small, nuanced shift
-        "tentatively",     # Hesitant, testing motion
-        "finely",          # Tiny, controlled tweak
-        "gingerly"         # Extra care to avoid damage
+        "slowly",
+        "softly",
+        "gently",
     ],
     "low": [
-        "steadily",        # Consistent, even pace
-        "smoothly",        # Fluid, uninterrupted motion
-        "slowly",          # Reduced speed, controlled
-        "evenly",          # Uniform, balanced movement
-        "gradually",       # Incremental, step-by-step
-        "calmly",          # Relaxed, steady progress
-        "consistently",    # Regular, predictable rate
-        "leisurely",       # Unrushed, moderate pace
-        "methodically",    # Systematic, planned motion
-        "patiently",       # Deliberate, unhurried
-        "uniformly"        # Equal, steady application
+        "steadily",
+        "calmly",
+        "gradually",
     ],
     "medium": [
-        "firmly",          # Solid, confident force
-        "strongly",        # Notable strength, assured
-        "confidently",     # Bold, self-assured motion
-        "solidly",         # Stable, grounded movement
-        "boldly",          # Assertive, decisive action
-        "briskly",         # Quick, energetic shift
-        "stably",          # Steady with moderate force
-        "vigorously",      # Active, forceful motion
-        "decisively",      # Clear, purposeful action
-        "securely",        # Tight, reliable grip or move
-        "actively"         # Engaged, dynamic motion
+        "firmly",
+        "quickly",
+        "strongly",
     ]
 }
 

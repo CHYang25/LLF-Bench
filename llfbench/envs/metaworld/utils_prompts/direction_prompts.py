@@ -3,31 +3,31 @@ import numpy as np
 
 direction_desc_dict = {
     "x-axis": {
-        "pos": ["rightward", "to the right", "toward the right"],
-        "neg": ["leftward", "to the left", "toward the left"]
+        "pos": ["to the right", "toward the right"],
+        "neg": ["to the left", "toward the left"]
     },
     "y-axis": {
-        "pos": ["forward", "to the front", "toward the front"],
-        "neg": ["backward", "to the back", "toward the back"]
+        "pos": ["to the front", "toward the front"],
+        "neg": ["to the back", "toward the back"]
     },
     "z-axis": {
-        "pos": ["upward", "up", "to the top"],
-        "neg": ["downward", "down", "to the bottom"]
+        "pos": ["upward", "to the top"],
+        "neg": ["downward", "to the bottom"]
     }
 }
 
 direction_desc_list = [
     [
-        ["leftward", "to the left", "toward the left"],
-        ["rightward", "to the right", "toward the right"] 
+        ["to the left", "toward the left"],
+        ["to the right", "toward the right"] 
     ],
     [        
-        ["forward", "to the front", "toward the front"],
-        ["backward", "to the back", "toward the back"]
+        ["to the front", "toward the front"],
+        ["to the back", "toward the back"]
     ],
     [
-        ["upward", "up", "to the top"], 
-        ["downward", "down", "to the bottom"]
+        ["upward", "to the top"], 
+        ["downward", "to the bottom"]
     ]
 ]
 
