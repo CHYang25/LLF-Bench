@@ -364,7 +364,7 @@ class MetaworldWrapper(LLFWrapper):
                 elif not lid_gripped:
                     _reason_goal = self.format(box_close_v2_prompts.move_to_lid_feedback)
 
-                _feedback = _reason_goal + ' ' + positive_conjunctions_sampler() + self.format(task_hp_feedback)
+                _feedback = _reason_goal + positive_conjunctions_sampler() + self.format(task_hp_feedback)
 
                 if gripper_feedback is not None:
                     if _feedback is not None:
@@ -394,7 +394,7 @@ class MetaworldWrapper(LLFWrapper):
                 elif not lid_gripped:
                     _reason_goal = self.format(box_close_v2_prompts.move_to_lid_feedback)
 
-                _feedback = _reason_goal + ' ' + negative_conjunctions_sampler() + self.format(task_hn_feedback)
+                _feedback = _reason_goal + negative_conjunctions_sampler() + self.format(task_hn_feedback)
 
                 # gripper feedback
                 if gripper_feedback is not None:
@@ -488,7 +488,7 @@ class MetaworldWrapper(LLFWrapper):
                 else:
                     _reason_goal = self.format(door_close_v2_prompts.move_to_door_feedback)
 
-                _feedback = _reason_goal + ' ' + positive_conjunctions_sampler() + self.format(task_hp_feedback)
+                _feedback = _reason_goal + positive_conjunctions_sampler() + self.format(task_hp_feedback)
                 
                 if gripper_feedback is not None:
                     if _feedback is not None:
@@ -515,7 +515,7 @@ class MetaworldWrapper(LLFWrapper):
                 else:
                     _reason_goal = self.format(door_close_v2_prompts.move_to_door_feedback)
 
-                _feedback = _reason_goal + ' ' + negative_conjunctions_sampler() + self.format(task_hn_feedback)
+                _feedback = _reason_goal + negative_conjunctions_sampler() + self.format(task_hn_feedback)
 
                 # gripper feedback
                 if gripper_feedback is not None:
@@ -611,7 +611,7 @@ class MetaworldWrapper(LLFWrapper):
                     _reason_goal = self.format(push_v2_prompts.move_to_puck_feedback)
                 # _feedback = self.format(hp_feedback)
                 # _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
-                _feedback = _reason_goal + ' ' + positive_conjunctions_sampler() + self.format(task_hp_feedback)
+                _feedback = _reason_goal + positive_conjunctions_sampler() + self.format(task_hp_feedback)
                 
                 if gripper_feedback is not None:
                     if _feedback is not None:
@@ -640,7 +640,7 @@ class MetaworldWrapper(LLFWrapper):
                     _reason_goal = self.format(push_v2_prompts.move_to_puck_feedback)
                 # _feedback = self.format(hn_feedback)
                 # _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
-                _feedback = _reason_goal + ' ' + negative_conjunctions_sampler() + self.format(task_hn_feedback)
+                _feedback = _reason_goal + negative_conjunctions_sampler() + self.format(task_hn_feedback)
 
                 # gripper feedback
                 if gripper_feedback is not None:
@@ -737,7 +737,7 @@ class MetaworldWrapper(LLFWrapper):
                     _reason_goal = self.format(push_back_v2_prompts.move_to_puck_feedback)
                 # _feedback = self.format(hp_feedback)
                 # _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
-                _feedback = _reason_goal + ' ' + positive_conjunctions_sampler() + self.format(task_hp_feedback)
+                _feedback = _reason_goal + positive_conjunctions_sampler() + self.format(task_hp_feedback)
                 
                 if gripper_feedback is not None:
                     if _feedback is not None:
@@ -765,7 +765,7 @@ class MetaworldWrapper(LLFWrapper):
                     _reason_goal = self.format(push_back_v2_prompts.move_to_puck_feedback)
                 # _feedback = self.format(hn_feedback)
                 # _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
-                _feedback = _reason_goal + ' ' + negative_conjunctions_sampler() + self.format(task_hn_feedback)
+                _feedback = _reason_goal + negative_conjunctions_sampler() + self.format(task_hn_feedback)
 
                 # gripper feedback
                 if gripper_feedback is not None:
@@ -861,7 +861,7 @@ class MetaworldWrapper(LLFWrapper):
                     _reason_goal = self.format(sweep_v2_prompts.move_to_cube_feedback)
                 # _feedback = self.format(hp_feedback)
                 # _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
-                _feedback = _reason_goal + ' ' + positive_conjunctions_sampler() + self.format(task_hp_feedback)
+                _feedback = _reason_goal + positive_conjunctions_sampler() + self.format(task_hp_feedback)
                 
                 if gripper_feedback is not None:
                     if _feedback is not None:
@@ -889,7 +889,7 @@ class MetaworldWrapper(LLFWrapper):
                     _reason_goal = self.format(sweep_v2_prompts.move_to_cube_feedback)
                 # _feedback = self.format(hn_feedback)
                 # _feedback = _reason_goal + " " + _feedback[0].lower() + _feedback[1:]
-                _feedback = _reason_goal + ' ' + negative_conjunctions_sampler() + self.format(task_hn_feedback)
+                _feedback = _reason_goal + negative_conjunctions_sampler() + self.format(task_hn_feedback)
 
                 # gripper feedback
                 if gripper_feedback is not None:
@@ -916,14 +916,16 @@ class MetaworldWrapper(LLFWrapper):
 
     def _reset(self, *, seed=None, options=None):
         self._current_observation, info = self.env.reset(seed=seed, options=options)
-        self._prev_expert_action = None
+        self._prev_expert_action = self.expert_action
         observation = self._format_obs(self._current_observation)
         task = re.search(r'(.*)-v[0-9]', self.env.env_name).group(1)
         mode = 'relative' if self.control_relative_position else 'absolute'
         instruction = self.format(mw_instruction, task=task, mode=mode)
         info['success'] = False
         info['video'] = [self.env.render()[::-1]] if self.env._render_video else None
-        return dict(instruction=instruction, observation=observation, feedback=None), info
+        feedback = Feedback()
+        feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(self._prev_expert_action))
+        return dict(instruction=instruction, observation=observation, feedback=feedback), info
 
     def _format_obs(self, observation):
         text = self.textualize_observation(observation)
@@ -936,7 +938,7 @@ class MetaworldWrapper(LLFWrapper):
         # f"delta x: {action[0]:.2f}, delta y:{action[1]:.2f}, delta z:{action[2]:.2f}, gripper state:{action[3]:.1f}"
         # or another action text format if the action isn't a delta.
         # TODO should not be the raw action
-        return np.array2string(action)
+        return np.array2string(action, precision=10)
 
     def textualize_observation(self, observation):
         """ Parse np.ndarray observation into text. """
@@ -948,8 +950,8 @@ class MetaworldWrapper(LLFWrapper):
         # convert np.ndarray to list
         for k,v in obs_dict.items():
             if isinstance(v, np.ndarray):
-                obs_dict[k] = np.array2string(v)
+                obs_dict[k] = np.array2string(v, precision=10)
             else: # it's a scalar
-                obs_dict[k] = f"{v:.3f}"
+                obs_dict[k] = f"{v:.10f}"
         observation_text = json.dumps(obs_dict)
         return observation_text

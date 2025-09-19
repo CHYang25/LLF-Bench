@@ -185,9 +185,9 @@ class HighwayWrapper(LLFWrapper):
         # convert np.ndarray to list
         for k,v in obs_dict.items():
             if isinstance(v, np.ndarray):
-                obs_dict[k] = np.array2string(v)
+                obs_dict[k] = np.array2string(v, precision=10)
             else: # it's a scalar
-                obs_dict[k] = f"{v}"
+                obs_dict[k] = f"{v:.10f}"
         observation_text = json.dumps(obs_dict)
         return observation_text
 
@@ -197,4 +197,4 @@ class HighwayWrapper(LLFWrapper):
         # f"delta x: {action[0]:.2f}, delta y:{action[1]:.2f}, delta z:{action[2]:.2f}, gripper state:{action[3]:.1f}"
         # or another action text format if the action isn't a delta.
         # TODO should not be the raw action
-        return np.array2string(action)
+        return np.array2string(action, precision=10)
