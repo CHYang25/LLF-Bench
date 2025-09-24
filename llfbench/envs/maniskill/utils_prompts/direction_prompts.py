@@ -3,31 +3,31 @@ import numpy as np
 
 move_direction_desc_dict = {
     "x-axis": {
-        "pos": ["rightward", "to the right", "toward the right"],
-        "neg": ["leftward", "to the left", "toward the left"]
+        "pos": ["to the right", "toward the right"],
+        "neg": ["to the left", "toward the left"]
     },
     "y-axis": {
-        "pos": ["forward", "to the front", "toward the front"],
-        "neg": ["backward", "to the back", "toward the back"]
+        "pos": ["to the front", "toward the front"],
+        "neg": ["to the back", "toward the back"]
     },
     "z-axis": {
-        "pos": ["upward", "up", "to the top"],
-        "neg": ["downward", "down", "to the bottom"]
+        "pos": ["upward", "to the top"],
+        "neg": ["downward", "to the bottom"]
     }
 }
 
 move_direction_desc_list = [
     [
-        ["leftward", "to the left", "toward the left"],
-        ["rightward", "to the right", "toward the right"] 
+        ["to the left", "toward the left"],
+        ["to the right", "toward the right"] 
     ],
     [        
-        ["forward", "to the front", "toward the front"],
-        ["backward", "to the back", "toward the back"]
+        ["to the front", "toward the front"],
+        ["to the back", "toward the back"]
     ],
     [
-        ["upward", "up", "to the top"], 
-        ["downward", "down", "to the bottom"]
+        ["upward", "to the top"], 
+        ["downward", "to the bottom"]
     ]
 ]
 
@@ -40,31 +40,31 @@ def move_direction_converter(difference: np.array):
 
 turn_direction_desc_dict = {
     "x-axis": {
-        "pos": ["pitch up", "pitch to the top", "pitch toward the top"],
-        "neg": ["pitch down", "pitch to the bottom", "pitch toward the bottom"]
+        "pos": ["pitch to the top", "pitch toward the top"],
+        "neg": ["pitch to the bottom", "pitch toward the bottom"]
     },
     "y-axis": {
-        "pos": ["roll left", "roll to the left", "roll toward the left"],
-        "neg": ["roll right", "roll to the right", "roll toward the right"]
+        "pos": ["roll to the left", "roll toward the left"],
+        "neg": ["roll to the right", "roll toward the right"]
     },
     "z-axis": {
-        "pos": ["yaw left", "yaw to the left", "yaw toward the left"],
-        "neg": ["yaw right", "yaw to the right", "yaw toward the right"]
+        "pos": ["yaw to the left", "yaw toward the left"],
+        "neg": ["yaw to the right", "yaw toward the right"]
     }
 }
 
 turn_direction_desc_list = [
     [
-        ["pitch down", "pitch to the bottom", "pitch toward the bottom"],
-        ["pitch up", "pitch to the top", "pitch toward the top"]
+        ["pitch to the bottom", "pitch toward the bottom"],
+        ["pitch to the top", "pitch toward the top"]
     ],
     [
-        ["roll left", "roll to the left", "roll toward the left"],
-        ["roll right", "roll to the right", "roll toward the right"]
+        ["roll to the left", "roll toward the left"],
+        ["roll to the right", "roll toward the right"]
     ],
     [
-        ["yaw left", "yaw to the left", "yaw toward the left"],
-        ["yaw right", "yaw to the right", "yaw toward the right"]
+        ["yaw to the left", "yaw toward the left"],
+        ["yaw to the right", "yaw toward the right"]
     ]
 ]
 
