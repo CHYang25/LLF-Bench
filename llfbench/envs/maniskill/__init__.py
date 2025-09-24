@@ -1,11 +1,12 @@
 import gymnasium as gym
 from gymnasium.envs.registration import register
-import mani_skill.envs
-from mani_skill.utils.download_demo import DATASET_SOURCES 
 import numpy as np
 import random
 import warnings
 from llfbench.envs.maniskill.wrapper import ManiskillWrapper
+import torch
+
+torch.multiprocessing.set_start_method('spawn', force=True)
 
 def make_env(env_name,
              instruction_type='b',
