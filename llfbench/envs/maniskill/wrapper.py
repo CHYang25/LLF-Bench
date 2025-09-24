@@ -580,7 +580,10 @@ current_tcp_to_peg_dist: {current_tcp_to_peg_dist}."""
         instruction = self.format(ms_instruction, task=task)
         info['success'] = False
         info['video'] = [self.env.render()[::-1]] if self.env._render_video else None
-        return dict(instruction=instruction, observation=observation, feedback=None), info
+        feedback = Feedback()
+        if 'fp' in self._feedback_type:
+            feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(self._prev_expert_action))
+        return dict(instruction=instruction, observation=observation, feedback=feedback), info
     
     def _format_obs(self, observation):
         text = self.textualize_observation(observation)
