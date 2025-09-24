@@ -171,3 +171,4 @@ checkpoints
 pusht_keypoints_checkpoints
 pusht_image_checkpoints
 .gitattributes
+il_trainer
