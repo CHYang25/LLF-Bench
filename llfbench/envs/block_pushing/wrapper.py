@@ -27,7 +27,7 @@ class BlockPushingWrapper(LLFWrapper):
     INSTRUCTION_TYPES = ('b') #('b', 'p', 'c')
     FEEDBACK_TYPES = ('r', 'hp', 'hn', 'fp')
 
-    def __init__(self, env, instruction_type, feedback_type, debug: bool = True, mani_oracle: bool = True):
+    def __init__(self, env, instruction_type, feedback_type, debug: bool = False, mani_oracle: bool = True):
         super().__init__(env, instruction_type, feedback_type)
         # load the scripted policy
         if self.env.env_name == "BlockPushMultimodal-v0":
@@ -595,7 +595,10 @@ stage: {self.stage}."""
         task = re.search(r'(.*)-v[0-9]', self.env.env_name).group(1)
         instruction = self.format(bp_instruction, task=task)
         info = {'success': False, 'discount': self.current_time_step.discount}
-        return dict(instruction=instruction, observation=observation, feedback=None), info
+        feedback = Feedback()
+        if 'fp' in self.feedback_type:
+            feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(self._prev_expert_action))
+        return dict(instruction=instruction, observation=observation, feedback=feedback), info
 
     def _format_obs(self, observation):
         text = self.textualize_observation(observation)
