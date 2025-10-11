@@ -200,7 +200,9 @@ class PointmazeWrapper(LLFWrapper):
         instruction = self.format(pm_instruction, task=task)
         info.update({'success': False, 'q_pos': self.current_pos, 'q_vel': self.current_vel, 'goal': self.env_target})
         info['video'] = [self.env.render()[::-1]] if self.env._render_video else None
-        return dict(instruction=instruction, observation=observation, feedback=None), info
+        feedback = Feedback()
+        feedback.fp = self.textualize_expert_action(self._prev_expert_action)
+        return dict(instruction=instruction, observation=observation, feedback=feedback), info
 
     def _format_obs(self, observation):
         text = self.textualize_observation(observation)
