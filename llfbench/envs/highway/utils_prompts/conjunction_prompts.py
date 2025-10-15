@@ -1,13 +1,11 @@
 import random
 
 positive_conjunctions = [
-    " Also, ", " Additionally, ", " Moreover, ", " Furthermore, ", 
-    " In addition, ", " Plus, ", 
+    " Also, ", " Moreover, ", " Furthermore, ", " Plus, ", 
 ]
 
 negative_conjunctions = [
-    " However, ", " But, ", " Yet, ", 
-    " Nevertheless, ", " Nonetheless, ", " Even so, ", " Despite that, "
+    " However, ", " But, ", " Yet, ", " Even so, ",
 ]
 
 positive_conjunctions_sampler = lambda: random.choice(positive_conjunctions)

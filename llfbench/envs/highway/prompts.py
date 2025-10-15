@@ -4,7 +4,7 @@
 hw_instruction = (
     "Your goal is to control a vehicle to park in a desired location, while ensuring that it does not collide with any obstacles or other vehicles. "+
     "You will receive the observation of the vehicle's state as well as the desired parking location represented by an array of numbers. "+
-    "The dimensions of the array correspond to [x, y, vx, vy, cos_h, sin_h]. "+
+    "The dimensions of the array correspond to [x, y, vx, vy, sin_h, cos_h]. "+
     "That is, the first 2 dimensions denote the position, the next 2 denote the velocity, and the last 2 denote the orientation. "+
     "Your action is a 2-dim vector, where the first dimension controls the throttle input, and the last dimension controls the steering input. "+
     "Throttle is a number between -5 and 5, representing acceleration in units of m/s^2. "+
@@ -39,17 +39,17 @@ fp_feedback = (
 )
 
 hp_feedback = (
-    "This is a good action, as it leads to the higher reward.",
-    "This is a good action, as it moves the vehicle closer to the goal.",
-    "This is a good action, as it helps the vehicle approach the goal.",
-    "This is a good action, as it gets the vehicle nearer to the goal.",
-    "This is a good action, as it brings the vehicle closer to the goal.",
+    "the action is helpful for the state.",
+    "the action is good for the state.",
+    "the action is right for the state.",
+    "the action is useful for the state.",
+    "the action is working for the state.",
 )
 
 hn_feedback = (
-    "This is a bad action, because the vehicle is moving away from the goal.",
-    "This is a bad action, because the vehicle is not moving towards the goal.",
-    "This is a bad action, because the vehicle is not getting closer to the goal.",
-    "This is a bad action, because the vehicle is diverging from the goal.",
-    "This is a bad action, because the vehicle is not approaching the goal.",
+    "the action is not good for the state.",
+    "the action is not right for the state.",
+    "the action is not helpful for the state.",
+    "the action is not useful for the state.",
+    "the action is not working for the state.",
 )
