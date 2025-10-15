@@ -76,7 +76,7 @@ setuptools.setup(
             'cffi==1.17.1'
         ],
         'highway': [
-            'stable-baselines3 @ git+https://github.com/DLR-RM/stable-baselines3'
+            'stable-baselines3==2.2.1'
         ]
     },
     cmdclass={'develop': DownloadCheckpoints}
