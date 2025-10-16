@@ -209,7 +209,7 @@ Turn right: {turn_right}
 
         observation = self._format_obs(self.current_observation)
         info["success"] = bool(info["is_success"])
-        return dict(instruction=None, observation=observation, feedback=feedback), reward, terminated or info["success"], truncated, info
+        return dict(instruction=None, observation=observation, feedback=feedback), reward, (terminated or info["success"]) and not is_crashed, truncated or is_crashed, info
 
     def textualize_observation(self, observation):
         """ Parse np.ndarray observation into text. """
