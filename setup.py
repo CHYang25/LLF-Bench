@@ -92,7 +92,7 @@ setuptools.setup(
         "gymnasium==0.29.1",
         "gym==0.23.1",
         "parse==1.19.1",
-        "openai==0.28",
+        "openai==2.8.1",
         "pyautogen==0.1",
         "gym-bandits@git+https://github.com/JKCooper2/gym-bandits#egg=gym-bandits",
         "cmudict==1.0.13",
