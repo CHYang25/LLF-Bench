@@ -105,6 +105,7 @@ setuptools.setup(
         "huggingface-hub==0.26.2",
         "d4rl",
         "cython<3",
+        "mujoco==2.3.7",
     ],
     extras_require={
         'metaworld': ['metaworld@git+https://github.com/Farama-Foundation/Metaworld.git@c822f28#egg=metaworld'],
@@ -117,7 +118,7 @@ setuptools.setup(
             'shapely==1.8.4',
             'cffi==1.17.1'
         ],
-        'highway': [ 'stable-baselines3==2.2.1' ]
+        'highway': [ 'stable-baselines3==2.2.1' , "mujoco==2.3.7" ]
     },
     # Keeps your current behavior for editable installs,
     # but now it's safe if huggingface_hub isn't available during build.
