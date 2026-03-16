@@ -66,10 +66,10 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
 
         # resume training
         if cfg.training.resume:
-            lastest_ckpt_path = self.get_checkpoint_path()
-            if lastest_ckpt_path.is_file():
-                print(f"Resuming from checkpoint {lastest_ckpt_path}")
-                self.load_checkpoint(path=lastest_ckpt_path)
+            latest_ckpt_path = self.get_checkpoint_path()
+            if latest_ckpt_path.is_file():
+                print(f"Resuming from checkpoint {latest_ckpt_path}")
+                self.load_checkpoint(path=latest_ckpt_path)
 
         # configure dataset
         dataset: BaseLowdimDataset
