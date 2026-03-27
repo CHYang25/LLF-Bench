@@ -9,6 +9,7 @@ from llfbench.envs import block_pushing
 from llfbench.envs import maniskill
 from llfbench.envs import pusht
 from llfbench.envs import pointmaze
+from llfbench.envs import adroit
 
 if importlib.util.find_spec('metaworld'):
     from llfbench.envs import metaworld
