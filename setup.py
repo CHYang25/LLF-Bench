@@ -118,7 +118,11 @@ setuptools.setup(
             'shapely==1.8.4',
             'cffi==1.17.1'
         ],
-        'highway': [ 'stable-baselines3==2.2.1' , "mujoco==2.3.7" ]
+        'highway': [ 'stable-baselines3==2.2.1' , "mujoco==2.3.7" ],
+        'adroit': [ 
+            'gymnasium-robotics==1.2.0' , 
+            'mjrl @ git+https://github.com/aravindr93/mjrl.git' 
+        ]
     },
     # Keeps your current behavior for editable installs,
     # but now it's safe if huggingface_hub isn't available during build.
