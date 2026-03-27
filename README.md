@@ -6,6 +6,8 @@ LLF Bench is a benchmark that provides a diverse collection of interactive learn
 
 **Paper:** https://arxiv.org/abs/2312.06853
 
+For adroit hand, we borrow code from: https://github.com/aravindr93/hand_dapg/tree/master
+
 ## *Table of Contents*
 1. [**Overview**](#overview)
 2. [**Design principles**](#design-principles)
