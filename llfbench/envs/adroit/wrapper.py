@@ -4,6 +4,7 @@ from llfbench.envs.llf_env import LLFWrapper, Feedback
 from llfbench.envs.adroit.prompts import *
 from llfbench.envs.adroit.task_prompts import (
     hammer_prompts,
+    relocate_prompts,
 )
 from llfbench.envs.adroit.utils_prompts.conjunction_prompts import positive_conjunctions_sampler, negative_conjunctions_sampler
 from llfbench.envs.adroit.utils_prompts.recommend_prompts import (
@@ -43,11 +44,10 @@ class AdroitWrapper(LLFWrapper):
         super().__init__(env, instruction_type, feedback_type)
         # load the scripted policy
 
-        task_name = self.env.env_name
-        if task_name == "AdroitHandDoor-v1":
+        self.task_name = self.env.env_name
+        if self.task_name == "AdroitHandDoor-v1":
             policy_name = "door-v0.pickle"
-            self._step = self._step_hand_door
-        elif task_name == "AdroitHandHammer-v1":
+        elif self.task_name == "AdroitHandHammer-v1":
             policy_name = "hammer-v0.pickle"
             self._step = self._step_hand_hammer
 
@@ -66,12 +66,27 @@ class AdroitWrapper(LLFWrapper):
             self.recon_threshold = 1.0e-1
 
             self._prev_nail_displace = None
-        elif task_name == "AdroitHandPen-v1":
+        elif self.task_name == "AdroitHandPen-v1":
             policy_name = "pen-v0.pickle"
-        elif task_name == "AdroitHandRelocate-v0":
+        elif self.task_name == "AdroitHandRelocate-v1":
             policy_name = "relocate-v0.pickle"
+            self._step = self._step_hand_relocate
+
+            # Relocate-specific thresholds
+            self.relocate_reach_threshold = 6.0e-2
+            self.relocate_success_threshold = 5.0e-2
+            self.relocate_reach_progress_threshold = 1.0e-4
+            self.relocate_target_progress_threshold = -2.0e-3
+            self.relocate_grip_threshold = 5.0e-3
+            self.ball_lifted_threshold = 4.0e-2
+            self.expert_action_close_threshold = 0.14
+            self.arm_reco_threshold = 0.12
+            self.wrist_reco_threshold = 0.12
+            self.finger_reco_threshold = 0.14
+            self.recon_threshold = 1.0e-2
+
         else:
-            raise ValueError(f"Unrecognized task name from adroit hand: {task_name}.")
+            raise ValueError(f"Unrecognized task name from adroit hand: {self.task_name}.")
 
         if 'fp' in feedback_type:
             with open(os.path.join(os.path.realpath(os.path.dirname(__file__)), "hand_dapg/dapg/policies", policy_name), "rb") as f:
@@ -110,9 +125,209 @@ class AdroitWrapper(LLFWrapper):
     def _step_general(self, action):
         pass
 
-    def _step_hand_door(self, action):
+    def _step_hand_relocate(self, action):
+        prev_expert_action = self._prev_expert_action.copy()
+        prev_palm_to_ball_dist = self._prev_palm_to_ball_dist.copy()
+        prev_ball_to_target_dist = self._prev_ball_to_target_dist.copy()
+        prev_palm_to_target_diff = self._prev_palm_to_target_diff.copy()
+        prev_ball_to_target_diff = self._prev_ball_to_target_diff.copy()
+
         self._current_observation, reward, terminated, truncated, info = self.env.step(action)
         reward = float(reward)
+
+        obs = self.current_observation
+        arm_pos = obs[0:3]
+        arm_apos = obs[3:6]
+        wrist_apos = obs[6:8]
+        forefinger_pos = obs[8:12]
+        midfinger_pos = obs[12:16]
+        ringfinger_pos = obs[16:20]
+        litfinger_pos = obs[20:25]
+        thumb_pos = obs[25:30]
+        palm_to_ball_diff = obs[30:33]
+        palm_to_target_diff = obs[33:36]
+        ball_to_target_diff = obs[36:39]
+
+        expert_action = self.expert_action
+        self._prev_expert_action = expert_action.copy()
+
+        palm_to_ball_dist = np.linalg.norm(palm_to_ball_diff)
+        palm_to_target_dist = np.linalg.norm(palm_to_target_diff)
+        ball_to_target_dist = np.linalg.norm(ball_to_target_diff)
+        
+        palm_to_ball_progress = prev_palm_to_ball_dist - palm_to_ball_dist
+        ball_to_target_progress = prev_ball_to_target_dist - ball_to_target_dist
+
+        ball_move = ball_to_target_diff - prev_ball_to_target_diff
+        palm_move = palm_to_target_diff - prev_palm_to_target_diff
+        palm_ball_move_diff = np.linalg.norm(ball_move - palm_move)
+
+        env_state = self.base_env.get_env_state()
+        ball_pos = env_state["obj_pos"].copy()
+
+        # stage metrics
+        ball_near_palm = bool(palm_to_ball_dist < self.relocate_reach_threshold)
+        ball_gripped = palm_ball_move_diff < self.relocate_grip_threshold and ball_near_palm and ball_pos[2] > self.ball_lifted_threshold
+        goal_reached = (ball_to_target_dist < self.relocate_success_threshold) and ball_gripped
+
+        if goal_reached:
+            stage_key = "move_to_target"
+            _stage_feedback = self.format(relocate_prompts.move_to_target_feedback)
+        elif not ball_near_palm:
+            stage_key = "go_to_ball"
+            _stage_feedback = self.format(relocate_prompts.go_to_ball_feedback)
+        elif ball_near_palm and not ball_gripped:
+            stage_key = "grip_ball"
+            _stage_feedback = self.format(relocate_prompts.grip_ball_feedback)
+        else:
+            stage_key = "move_to_target"
+            _stage_feedback = self.format(relocate_prompts.move_to_target_feedback)
+        
+        # action optimality
+        action_error = np.linalg.norm(action - prev_expert_action) / np.sqrt(action.shape[0])
+        action_optim = action_error < self.expert_action_close_threshold
+
+        # movement guidance
+        _recommend_feedback = []
+
+        # action-vs-expert mismatch by actuator groups
+        action_delta = prev_expert_action - action
+
+        # relocate has 30 actions: 6 arm + 2 wrist + 22 finger/thumb
+        arm_delta = action_delta[0:6]
+        wrist_delta = action_delta[6:8]
+        finger_delta = action_delta[8:30]
+
+        arm_mismatch = np.linalg.norm(arm_delta) / np.sqrt(6)
+        wrist_mismatch = np.linalg.norm(wrist_delta) / np.sqrt(2)
+        finger_mismatch = np.linalg.norm(finger_delta) / np.sqrt(22)
+
+        def _axis_recommend(vec):
+            recon = []
+            if vec[0] > self.recon_threshold:
+                recon.append(self.format(move_right_recommend))
+            elif vec[0] < -self.recon_threshold:
+                recon.append(self.format(move_left_recommend))
+            if vec[1] > self.recon_threshold:
+                recon.append(self.format(move_forward_recommend))
+            elif vec[1] < -self.recon_threshold:
+                recon.append(self.format(move_backward_recommend))
+            if vec[2] > self.recon_threshold:
+                recon.append(self.format(move_up_recommend))
+            elif vec[2] < -self.recon_threshold:
+                recon.append(self.format(move_down_recommend))
+            return recon
+        
+        desired_vec = np.zeros(3)
+
+        if stage_key == "go_to_ball":
+            no_progress = palm_to_ball_progress < self.relocate_reach_progress_threshold
+            if no_progress:
+                action_optim = False
+            elif not no_progress and palm_to_ball_dist > 0.15:
+                action_optim = True
+            if no_progress or (arm_mismatch > self.arm_reco_threshold or wrist_mismatch > self.wrist_reco_threshold):
+                desired_vec = -palm_to_ball_diff
+                _recommend_feedback.extend(_axis_recommend(desired_vec))
+            
+        elif stage_key == "grip_ball":
+            if arm_mismatch > self.arm_reco_threshold or wrist_mismatch > self.wrist_reco_threshold:
+                desired_vec = -palm_to_ball_diff
+                _recommend_feedback.extend(_axis_recommend(desired_vec))
+
+            if finger_mismatch > self.finger_reco_threshold or not ball_near_palm:
+                _recommend_feedback.append(self.format(relocate_prompts.grasp_ball_recommend))     
+
+        elif stage_key == "move_to_target":
+            no_progress = ball_to_target_progress < self.relocate_target_progress_threshold
+            action_optim = not no_progress
+            if not goal_reached and (no_progress or (arm_mismatch > self.arm_reco_threshold or wrist_mismatch > self.wrist_reco_threshold)):
+                desired_vec = -ball_to_target_diff
+                _recommend_feedback.extend(_axis_recommend(desired_vec))
+
+            if not goal_reached and (no_progress or finger_mismatch > self.finger_reco_threshold):
+                _recommend_feedback.append(self.format(relocate_prompts.grasp_ball_recommend))
+
+        feedback_type = self._feedback_type
+        feedback = Feedback()
+        if 'r' in feedback_type:
+            feedback.r = self.format(r_feedback, reward=np.round(reward, 3))
+        if 'hp' in feedback_type and action_optim:
+            _feedback = self.concatenate_sentences(
+                stage_feedback=_stage_feedback,
+                action_feedback=self.format(hp_feedback),
+                reco_feedback=_recommend_feedback,
+                action_positive=True,
+            )
+
+            if self.debug:
+                _feedback += (
+                    f"\n[palm_to_ball_dist]={palm_to_ball_dist:.6f}"
+                    f"\n[palm_to_target_dist]={palm_to_target_dist:.6f}"
+                    f"\n[ball_to_target_dist]={ball_to_target_dist:.6f}"
+                    f"\n[action_error]={action_error:.6f}"
+                    f"\n[stage]={stage_key}"
+                    f"\n[palm_to_ball_progress]={palm_to_ball_progress}"
+                    f"\n[ball_to_target_progress]={ball_to_target_progress}"
+                    f"\n[ball_move]={ball_move}"
+                    f"\n[palm_move]={palm_move}"
+                    f"\n[ball_pos]={ball_pos}"
+                    f"\n[palm_ball_move_diff]={palm_ball_move_diff}"
+                    f"\n[arm_mismatch]={arm_mismatch:.6f}"
+                    f"\n[wrist_mismatch]={wrist_mismatch:.6f}"
+                    f"\n[finger_mismatch]={finger_mismatch:.6f}"
+                    f"\n[arm_reco_threshold]={self.arm_reco_threshold:.6f}"
+                    f"\n[wrist_reco_threshold]={self.wrist_reco_threshold:.6f}"
+                    f"\n[finger_reco_threshold]={self.finger_reco_threshold:.6f}"
+                    f"\n[desired_vec]={desired_vec}"
+                    f"\n[action]={action}"
+                    f"\n[prev_expert_action]={prev_expert_action}."
+                )
+
+            feedback.hp = _feedback
+        if 'hn' in feedback_type and not action_optim:
+            _feedback = self.concatenate_sentences(
+                stage_feedback=_stage_feedback,
+                action_feedback=self.format(hn_feedback),
+                reco_feedback=_recommend_feedback,
+                action_positive=False,
+            )
+
+            if self.debug:
+                _feedback += (
+                    f"\n[palm_to_ball_dist]={palm_to_ball_dist:.6f}"
+                    f"\n[palm_to_target_dist]={palm_to_target_dist:.6f}"
+                    f"\n[ball_to_target_dist]={ball_to_target_dist:.6f}"
+                    f"\n[action_error]={action_error:.6f}"
+                    f"\n[stage]={stage_key}"
+                    f"\n[palm_to_ball_progress]={palm_to_ball_progress}"
+                    f"\n[ball_to_target_progress]={ball_to_target_progress}"
+                    f"\n[ball_move]={ball_move}"
+                    f"\n[palm_move]={palm_move}"
+                    f"\n[ball_pos]={ball_pos}"
+                    f"\n[palm_ball_move_diff]={palm_ball_move_diff}"
+                    f"\n[arm_mismatch]={arm_mismatch:.6f}"
+                    f"\n[wrist_mismatch]={wrist_mismatch:.6f}"
+                    f"\n[finger_mismatch]={finger_mismatch:.6f}"
+                    f"\n[arm_reco_threshold]={self.arm_reco_threshold:.6f}"
+                    f"\n[wrist_reco_threshold]={self.wrist_reco_threshold:.6f}"
+                    f"\n[finger_reco_threshold]={self.finger_reco_threshold:.6f}"
+                    f"\n[desired_vec]={desired_vec}"
+                    f"\n[action]={action}"
+                    f"\n[prev_expert_action]={prev_expert_action}."
+                )
+
+            feedback.hn = _feedback
+        if 'fp' in feedback_type:
+            feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(expert_action))
+
+        self._prev_palm_to_ball_dist = palm_to_ball_dist
+        self._prev_ball_to_target_dist = ball_to_target_dist
+        self._prev_palm_to_target_diff = palm_to_target_diff
+        self._prev_ball_to_target_diff = ball_to_target_diff
+        observation = self._format_obs(self.current_observation)
+        return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or goal_reached, truncated, info
+        
 
     def _step_hand_hammer(self, action):
         prev_expert_action = self._prev_expert_action.copy()
@@ -333,10 +548,19 @@ class AdroitWrapper(LLFWrapper):
 
     def _reset(self, *, seed = None, options = None):
         self._current_observation, info = self.env.reset(seed=seed, options=options)
+
         if 'fp' in self._feedback_type:
             self._prev_expert_action = self.expert_action.copy()
+
+        if self.task_name == "AdroitHandHammer-v1":
             self._prev_nail_displace = self.current_observation[26]
             self._prev_hammer_pos = self.current_observation[36:39].copy()
+        elif self.task_name == "AdroitHandRelocate-v1":
+            self._prev_palm_to_ball_dist = np.linalg.norm(self.current_observation[30:33])
+            self._prev_ball_to_target_dist = np.linalg.norm(self.current_observation[36:39])
+            self._prev_palm_to_target_diff = self.current_observation[33:36]
+            self._prev_ball_to_target_diff = self.current_observation[36:39]
+
         observation = self._format_obs(self._current_observation)
         task = re.search(r'(.*)-v[0-9]', self.env.env_name).group(1)
         instruction = self.format(ad_instruction, task=task)
