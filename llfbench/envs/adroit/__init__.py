@@ -21,7 +21,7 @@ def make_env(env_name,
              warning=True,
              ):
     
-    env = gym.make(env_name, max_episode_steps=400, render_mode='rgb_array')
+    env = gym.make(env_name, max_episode_steps=150, render_mode='rgb_array')
     max_episode_steps = env._max_episode_steps  
 
     class Wrapper(gym.Wrapper):
@@ -64,4 +64,10 @@ register(
     id=f"llf-adroit-adroit-hand-hammer-v1",
     entry_point='llfbench.envs.adroit:make_env',
     kwargs=dict(env_name="AdroitHandHammer-v1", feedback_type='a', instruction_type='b', visual=False, seed=0, warning=True)
+)
+
+register(
+    id=f"llf-adroit-adroit-hand-relocate-v1",
+    entry_point='llfbench.envs.adroit:make_env',
+    kwargs=dict(env_name="AdroitHandRelocate-v1", feedback_type='a', instruction_type='b', visual=False, seed=0, warning=True)
 )
