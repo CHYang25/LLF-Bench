@@ -1,4 +1,5 @@
 import gymnasium as gym
+from gymnasium.spaces import Box
 import warnings
 from gymnasium.envs.registration import register
 from llfbench.utils import generate_combinations_dict
@@ -53,6 +54,17 @@ def make_env(env_name,
                 np.random.seed(seed)
             task = random.choice(benchmark.train_tasks)
             self.env.set_task(task)
+            if options is not None and options.get("enhance_random", False):
+                if self.env_name == 'box-close-v2':
+                    obj_low = (-0.05, 0.48, 0.02)
+                    obj_high = (0.05, 0.55, 0.02)
+                    goal_low = (-0.1, 0.7, 0.133)
+                    goal_high = (0.1, 0.8, 0.133)
+                    self.env._random_reset_space = Box(
+                        np.hstack((obj_low, goal_low)),
+                        np.hstack((obj_high, goal_high)),
+                    )
+                    self.env._freeze_rand_vec = False
             return self.env.reset(seed=seed, options=options)
         
     env = Wrapper(env)
