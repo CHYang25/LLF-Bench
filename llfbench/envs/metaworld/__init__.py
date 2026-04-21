@@ -65,6 +65,14 @@ def make_env(env_name,
                         np.hstack((obj_high, goal_high)),
                     )
                     self.env._freeze_rand_vec = False
+                elif self.env_name == 'sweep-v2':
+                    obj_low = (-0.1, 0.55, 0.02)
+                    obj_high = (0.1, 0.7, 0.02)
+                    self.env._random_reset_space = Box(
+                        np.array(obj_low),
+                        np.array(obj_high),
+                    )
+                    self.env._freeze_rand_vec = False
             return self.env.reset(seed=seed, options=options)
         
     env = Wrapper(env)
