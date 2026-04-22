@@ -66,8 +66,8 @@ def make_env(env_name,
                     )
                     self.env._freeze_rand_vec = False
                 elif self.env_name == 'sweep-v2':
-                    obj_low = (-0.1, 0.55, 0.02)
-                    obj_high = (0.1, 0.7, 0.02)
+                    obj_low = (-0.1, 0.59, 0.02)
+                    obj_high = (0.1, 0.71, 0.02)
                     self.env._random_reset_space = Box(
                         np.array(obj_low),
                         np.array(obj_high),
