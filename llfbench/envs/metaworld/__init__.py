@@ -56,7 +56,7 @@ def make_env(env_name,
             self.env.set_task(task)
             if options is not None and options.get("enhance_random", False):
                 if self.env_name == 'box-close-v2':
-                    obj_low = (-0.05, 0.495, 0.02)
+                    obj_low = (-0.05, 0.48, 0.02)
                     obj_high = (0.05, 0.55, 0.02)
                     goal_low = (-0.1, 0.7, 0.133)
                     goal_high = (0.1, 0.8, 0.133)
