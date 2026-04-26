@@ -16,7 +16,7 @@ gym.register_envs(gymnasium_robotics)
 
 def custom_reset_model_adroit_hand_hammer_v1(self):
     target_bid = self._model_names.body_name2id["nail_board"]
-    self.model.body_pos[target_bid, 2] = self.np_random.uniform(low=0.1, high=0.3)
+    self.model.body_pos[target_bid, 2] = self.np_random.uniform(low=0.07, high=0.25)
     self.set_state(self.init_qpos, self.init_qvel)
     return self._get_obs()
 
