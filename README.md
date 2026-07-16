@@ -1,275 +1,294 @@
-# LLF-Bench: Benchmark for Interactive Learning from Language Feedback
+# LLF-Bench for Language-Critique Imitation Learning
 
-LLF Bench is a benchmark that provides a diverse collection of interactive learning problems where the agent gets language feedback instead of rewards (as in RL) or action feedback (as in imitation learning). The associated website and paper are:
+[LCIL paper](https://arxiv.org/abs/2607.01225) · [LCIL code](https://github.com/CHYang25/LLM-BC) · [This fork](https://github.com/CHYang25/LLF-Bench) · [Microsoft LLF-Bench](https://github.com/microsoft/LLF-Bench)
 
-**Website:** https://microsoft.github.io/LLF-Bench/
+> [!IMPORTANT]
+> This repository is the research fork of LLF-Bench used by **Language-Critique Imitation Learning from Suboptimal Demonstrations**. It extends [Microsoft's original LLF-Bench](https://github.com/microsoft/LLF-Bench) and is included as the `LLF-Bench/` submodule of [LLM-BC](https://github.com/CHYang25/LLM-BC). For the original interactive-learning benchmark, documentation, and results, use the Microsoft repository and [original paper](https://arxiv.org/abs/2312.06853).
 
-**Paper:** https://arxiv.org/abs/2312.06853
+This fork provides the **environment and language-label layer** for the LC-BC and LC-DP experiments. It wraps continuous-control benchmarks behind a common Gymnasium API, generates task-specific natural-language critiques for state-action pairs, and exposes success, reward, and rendering signals for evaluation. Policy models, training workspaces, datasets, and paper experiment configs live in the parent [LLM-BC repository](https://github.com/CHYang25/LLM-BC).
 
-For adroit hand, we borrow code from: https://github.com/aravindr93/hand_dapg/tree/master
+## Role in LCIL
 
-## *Table of Contents*
-1. [**Overview**](#overview)
-2. [**Design principles**](#design-principles)
-3. [**Installation**](#installation)
-4. [**Special Instructions for running Alfworld**](#special-instructions-for-running-alfworld)
-5. [**Special Instructions for running Metaworld**](#special-instructions-for-running-metaworld)
-6. [**Examples**](#examples)
-7. [**Testing**](#testing)
-8. [**Baseline and skyline results**](#baseline-and-skyline-results)
-9. [**Contributing**](#contributing)
-10. [**Trademarks**](#trademarks)
+The fork serves three purposes:
 
+1. **Environment benchmark.** It provides the navigation, gameplay, and manipulation environments used to collect demonstrations and evaluate policies.
+2. **Structured language-label generator.** Task wrappers convert state-action behavior into natural-language descriptions of task progress, action quality, and corrective movement.
+3. **Common evaluation interface.** Every wrapper exposes the same observation dictionary and keeps scalar reward available for metrics without treating it as language supervision.
 
-## Bug Fix:
-- There's no consistent reproduction for llfbench.metaworld. This is because it didn't pass the seed to the metaworld class during initialization. Bug is fixed at: 
-[here](./llfbench/envs/metaworld/__init__.py) line 21 and line 25.
+The generator used in the paper can be summarized as:
 
-Note that other than metaworld, other environments might have the same issue, but it'll not be fixed here.
+```mermaid
+flowchart LR
+    SA["State s_t + action a_t"] --> F["Task-specific feature extraction"]
+    F --> T["&lt;T&gt; Task progress"]
+    F --> A["&lt;A&gt; Action optimality"]
+    F --> M["&lt;M&gt; Movement guidance"]
+    T --> L["Structured language critique"]
+    A --> L
+    M --> L
+    L --> D["Language-labeled offline dataset"]
+```
 
-## Overview
+The labels are usually emitted as fluent prose rather than with literal `<T>`, `<A>`, and `<M>` prefixes. These symbols name the three semantic components used in the paper:
 
-<img src="https://microsoft.github.io/LLF-Bench/images/llf-bench.png" width="750">
+- `<T>` identifies the current task stage or relevant subgoal;
+- `<A>` describes whether the demonstrated action is beneficial, ineffective, or harmful;
+- `<M>` gives task-relevant corrective motion or control guidance.
 
+Task wrappers derive these components from the state/action quantities available to the environment adapter. Prompt pools and seeded template sampling add linguistic variation while retaining the same control-relevant semantics. The parent repository then distills these generated labels into its differentiable LLM-Captioner; this fork does not train the captioner or the policy.
 
-Each benchmark environment here follows the gym api.
+## Paper environments
 
-    observation_dict, info = env.reset()
-    observation_dict, reward, terminated, truncated, info = env.step(action)
+The LCIL paper evaluates the following eight state-based continuous-control tasks:
 
-`observation_dict` contains three fields:
+| Paper task | Benchmark | LLF-Bench environment ID | Install extra |
+| --- | --- | --- | --- |
+| Maze | D4RL PointMaze | `llf-pointmaze-maze2d-medium-v0` | base install; see [PointMaze note](#legacy-d4rl--pointmaze) |
+| Parking | Highway-Env | `llf-highway-parking-v0` | `highway` |
+| Sweep | MetaWorld | `llf-metaworld-sweep-v2` | `metaworld` |
+| Box-close | MetaWorld | `llf-metaworld-box-close-v2` | `metaworld` |
+| BlockPush | Block Pushing | `llf-blockpushing-BlockPushMultimodal-v0` | `blockpushing` |
+| PegInsert | ManiSkill | `llf-maniskill-PegInsertionSide-v1` | `maniskill` |
+| Hammer | Gymnasium-Robotics Adroit | `llf-adroit-adroit-hand-hammer-v1` | `adroit` |
+| Relocate | Gymnasium-Robotics Adroit | `llf-adroit-adroit-hand-relocate-v1` | `adroit` |
 
-- 'observation': a (partial) observation of the environment's state
-- 'instruction': a natural language description of the task, including the objective and information about the action space, etc.
-- 'feedback':  a natural language feedback to help the agent to better learn to solve the task.
-When a field is missing, its value is represented as None. For example, 'instruction' is typically only given by `reset` whereas 'feedback' is only given by `step`.
+The fork also retains the broader upstream benchmark and contains additional or experimental continuous-control adapters, including PushT, ManiSkill RollBall, Adroit Door, and other MetaWorld tasks. They are not part of the paper's main eight-task comparison.
 
-`reward` is intended for evaluating an agent's performance. It should **not** be passed to the learning agent.
+## What this fork changes
 
-`terminated` indicates whether a task has been solved (i.e., the goal has been reached) or not.
-`truncated` indicates whether the maximal episode length has been reached.
-`info` returns an additional info dict of the environment.
+Relative to the original Microsoft LLF-Bench, this branch focuses on language-labeled continuous control for offline imitation learning. The main changes include:
 
+- task adapters for Block Pushing, ManiSkill, PushT, PointMaze, and Adroit;
+- specialized feedback logic and prompt pools for the paper environments;
+- task-specific scripted or learned oracles for action guidance and demonstration collection;
+- state and optional image observations used by the parent LCIL pipelines;
+- Gym-to-Gymnasium compatibility for legacy environments;
+- environment and reset randomization used for distribution-shift experiments;
+- multi-step critique mergers used by sequence/image captioning paths where configured;
+- automatic retrieval of the PushT and Parking oracle checkpoints during editable installation;
+- a deterministic MetaWorld seeding fix described below.
 
-## Design principles
+The original `all_feedback.jpg` and `partial_feedback.jpg` files report results from the upstream interactive LLF-Bench evaluation. They are retained for provenance but are **not** LC-BC or LC-DP results; current LCIL results are reported in the [LCIL paper](https://arxiv.org/abs/2607.01225) and [parent README](https://github.com/CHYang25/LLM-BC#main-results).
 
-We design LLF-Bench as a benchmark to test the **learning** ability of interactive agents. We design each environment in LLF-Bench such that, from 'observation' and 'instruction' in `observation_dict`, it is sufficient (for a human) to tell when the task is indeed solved. Therefore, a policy that operates based purely on 'observation' and 'instruction' can solve these problems. However, we also design these environments such that 'observation' and 'instruction' are not sufficient for designing or efficiently learning the optimal policies. Each environment here is designed to have some ambiguities and latent characteristics in the dynamics, reward, or termination, so that the agent cannot infer the optimal policy just based on 'instruction'.
+## Language-feedback API
 
-These features are designed to test an agent's *learning* ability, especially, the ability to learn from language feedback. Language feedback can be viewed as a generalization of reward feedback in reinforcement learning. It can not only provide information about reward/success, but it can also convey expressive feedback such as explanations and suggestions. The language feedback is implemented as the field 'feedback' in `observation_dict`, which is to help the agent to learn better.
+The public entry point is `llfbench.make`, which follows the Gymnasium reset/step API:
 
+```python
+import llfbench
+
+env_id = "llf-metaworld-box-close-v2"
+
+env = llfbench.make(
+    env_id,
+    instruction_type="b",
+    feedback_type=("hp", "hn", "fp"),
+    visual=False,
+    seed=42,
+    warning=False,
+)
+env.action_space.seed(42)
+
+observation, info = env.reset(seed=42)
+action = env.action_space.sample()
+next_observation, reward, terminated, truncated, info = env.step(action)
+
+print(observation["instruction"])
+print(next_observation["feedback"])
+print("success:", info["success"])
+
+env.close()
+```
+
+For deterministic rollouts, pass the seed both when constructing the environment and when calling `reset`.
+
+Each returned observation is a dictionary with three fields:
+
+| Field | Meaning |
+| --- | --- |
+| `observation` | Textualized state, or `{text, image}` when visual observations are enabled |
+| `instruction` | Natural-language task and action-space description, normally supplied at reset |
+| `feedback` | Selected language-feedback components verbalized as one string |
+
+Some continuous-control wrappers provide initial future guidance at reset so that the data collector can obtain its first oracle action. Missing components are represented as `None`.
+
+The scalar `reward` returned by `step` is intended for evaluation and success accounting. In the LLF interface it should not be exposed to a learning agent as ordinary reward supervision. LCIL policies are trained from offline actions and structured language labels, and do not require LLF text or an oracle at deployment time.
+
+### Instruction and feedback types
+
+Support is task-dependent. Query an environment before configuring it:
+
+```python
+instruction_types, feedback_types = llfbench.supported_types(env_id)
+print(instruction_types, feedback_types)
+```
+
+The current continuous-control wrappers generally support basic instruction type `b`. The common feedback vocabulary is:
+
+| Type | Meaning |
+| --- | --- |
+| `r` | textualized scalar reward |
+| `hp` | hindsight-positive explanation for a desirable action |
+| `hn` | hindsight-negative explanation for a suboptimal action |
+| `fp` | future-positive suggestion or oracle guidance |
+| `fn` | future-negative suggestion, when implemented by the task |
+| `n` | no feedback |
+| `a` | all feedback types supported by that environment |
+| `m` | one randomly selected supported feedback type per transition |
+
+An explicit string or iterable may be passed as `feedback_type`. The LCIL data pipeline uses `("hp", "hn", "fp")` for the paper environments.
+
+## How language labels are produced
+
+The implementation is split into a common interface and task-specific logic:
+
+| Location | Responsibility |
+| --- | --- |
+| [`llfbench/envs/llf_env.py`](llfbench/envs/llf_env.py) | `Feedback` schema, feedback selection, seeded paraphrasing, and final verbalization |
+| `llfbench/envs/<family>/wrapper.py` | task-stage inference, action assessment, motion guidance, success logic, and observation formatting |
+| `llfbench/envs/<family>/task_prompts/` | task-progress and task-specific critique templates |
+| `llfbench/envs/<family>/utils_prompts/` | conjunction, direction, degree, and recommendation variations |
+| `llfbench/envs/<family>/oracles/` | learned or scripted action guidance where a task requires it |
+| [`llfbench/envs/highway/multistep_merger/`](llfbench/envs/highway/multistep_merger/) | structured reduction of several step-level critiques for multi-step captioning |
+
+At each step, a task wrapper:
+
+1. formats the current state for the shared observation interface;
+2. determines the current task stage and relevant subgoal;
+3. compares the behavior with task-specific progress or oracle criteria;
+4. selects the requested `Feedback` fields;
+5. samples semantically equivalent templates and concatenates the non-empty fields.
+
+During dataset generation, the parent [`scripts/gen_dataset.py`](https://github.com/CHYang25/LLM-BC/blob/main/scripts/gen_dataset.py) reads the oracle action from future guidance to collect a trajectory. It stores the remaining task-progress, action-quality, and movement-guidance prose as the training label, removing the final raw expert-action recommendation. No LLM API call is required for these rule/template-generated labels.
 
 ## Installation
 
-Create conda env.
+### Recommended: install through LLM-BC
 
-    conda create -n LLF-Bench python=3.8 -y
-    conda activate LLF-Bench
+For paper reproduction, use the parent repository's [`environment.yaml`](https://github.com/CHYang25/LLM-BC/blob/main/environment.yaml), which is the authoritative dependency specification. The current setup targets Linux, Python 3.9, and an NVIDIA GPU for training:
 
-Install the repo.
-
-    pip install -e .
-or
-    pip install -e .[#option1,#option2,etc.]
-
-Some valid options:
-
-    metaworld: for using metaworld envs
-    alfworld: for using alfworld envs
-
-For example, to use metaworld, install the repo by `pip install -e .[metaworld]`.
-
-### Special Instructions for running Alfworld
-
-Alfworld requires python3.9 so please use python3.9 when creating the conda environment. Activate the conda environment, clone the LLFbench repo and install it using
-
-`pip install -e .[alfworld]`
-
-When the first time you will run the alfworld environment, it will download additional files. You dont need to do any of this. Alfworld also uses a config.yaml file
-that changes the environment. We use the config yaml file provided here: [llfbench/envs/alfworld/base_config.yaml](https://github.com/microsoft/LLF-Bench/blob/main/llfbench/envs/alfworld/base_config.yaml). If you get some path errors, please ensure the source directory is referencing this file correctly. This is done in the code [here](https://github.com/microsoft/LLF-Bench/blob/main/llfbench/envs/alfworld/alfworld.py#L47).
-
-### Special Instructions for running Metaworld
-
-You should use python3.8 and install the repo with metaworld by running `pip install -e .[metaworld]`.
-
-For `metaworld` option, it requires libGL, which can be installed by
-
-    sudo apt-get install ffmpeg libsm6 libxext6
-
-For `reco` option, please follow the instruction here to register and get your own user key:
-
-https://www.omdbapi.com/apikey.aspx
-
-Then, you can set the environment variable `OMDB_API_KEY` to your key:
 ```bash
-export OMDB_API_KEY=your_key
+git clone --recursive https://github.com/CHYang25/LLM-BC.git
+cd LLM-BC
+
+conda env create -f environment.yaml
+conda activate llm-bc
+
+pip install -e .
+pip install -e "./LLF-Bench[metaworld,blockpushing,maniskill,pusht,highway,adroit]"
+bash LLF-Bench/blockpushing_install.sh
 ```
 
-## Examples
+For an existing parent-repository clone, initialize the fork with:
 
-This sample code creates an environment implemented in LLF-Bench, and creates an agent that interacts with it. The agent simply prints each observation to the console and takes console input as actions to be relayed to the environment.
-
-```python
-import llfbench as gym
-
-# Environments in the benchmark are registered following
-# the naming convention of llf-*
-
-env = gym.make('llf-gridworld-v0')
-
-done = False
-cumulative_reward = 0.0
-
-# First observation is acquired by resetting the environment
-
-observation, info = env.reset()
-
-while not done:
-    # Observation is dict having 'observation', 'instruction', 'feedback'
-    # Here we print the observation and ask the user for an action
-
-    action = input( observation['observation'] + '\n' +
-                    observation['instruction'] + '\n' +
-                    observation['feedback'] + '\n' +
-                    'Action: ' )
-
-    # Gridworld has a text action space, so TextWrapper is not needed
-    # to parse a valid action from the input string
-
-    observation, reward, terminated, truncated, info = env.step(action)
-
-    # reward is never revealed to the agent; only used for evaluation
-
-    cumulative_reward += reward
-
-    # terminated and truncated follow the same semantics as in Gymnasium
-
-    done = terminated or truncated
-
-print(f'Episode reward: {cumulative_reward}')
+```bash
+git submodule update --init --recursive
 ```
 
+This environment intentionally contains both legacy Gym and Gymnasium because PointMaze and Block Pushing still depend on older APIs. Important current versions include Python 3.9, Gym 0.23.1, Gymnasium 0.29.1, MuJoCo 2.3.7, ManiSkill 3.0.0b20, and the MetaWorld commit pinned in `setup.py`.
+
+### Standalone environment development
+
+For working only on this fork:
+
+```bash
+git clone https://github.com/CHYang25/LLF-Bench.git
+cd LLF-Bench
+
+conda create -n llfbench-lcil python=3.9 -y
+conda activate llfbench-lcil
+
+pip install -e ".[metaworld,blockpushing,maniskill,pusht,highway,adroit]"
+bash blockpushing_install.sh
+```
+
+Available extras are defined in [`setup.py`](setup.py): `metaworld`, `alfworld`, `maniskill`, `blockpushing`, `pusht`, `highway`, and `adroit`. Install only the task families you need when a smaller environment is preferable.
+
+The editable install is configured to download the learned PushT and Parking oracle checkpoints from the `LLM-BC` Hugging Face organization. To intentionally skip this step:
+
+```bash
+LLFBENCH_SKIP_CHECKPOINTS=1 pip install -e ".[highway,pusht]"
+```
+
+Skipping those checkpoints is suitable for development that does not request the corresponding oracle guidance; fetch them before collecting PushT or Parking demonstrations.
+
+### Headless rendering
+
+The parent setup uses OSMesa as the portable headless default:
+
+```bash
+conda env config vars set MUJOCO_GL=osmesa
+conda env config vars set PYOPENGL_PLATFORM=osmesa
+conda env config vars set TF_USE_LEGACY_KERAS=false
+conda env config vars set D4RL_SUPPRESS_IMPORT_ERROR=1
+conda deactivate
+conda activate llm-bc
+```
+
+GPU-backed offscreen rendering may use `MUJOCO_GL=egl` when supported by the host driver. Do not set `DISPLAY=:0` unless an X server is actually running there.
+
+### Legacy D4RL / PointMaze
+
+The Maze adapter imports `mujoco-py` through D4RL and may also require a local MuJoCo 2.1 installation even though the rest of the environment uses the modern `mujoco` 2.3.7 package. Follow the [PointMaze setup in the parent README](https://github.com/CHYang25/LLM-BC#legacy-d4rl--pointmaze-setup) if `mujoco-py` cannot locate MuJoCo or OpenGL.
+
+## Dataset generation and evaluation
+
+Released datasets are recommended for exact paper reproduction. To generate new expert trajectories and rule/template-based critiques from the parent repository root:
+
+```bash
+python scripts/gen_dataset.py \
+    --env-id metaworld-box-close-v2 \
+    --num-episodes 500 \
+    --max-steps 30 \
+    --parallel
+```
+
+The `--env-id` argument omits the leading `llf-`; the script adds it before calling `llfbench.make`. Related parent-repository tools collect suboptimal-policy rollouts, merge expert and suboptimal buffers, produce scalar/categorical ablations, and generate VLM labels. See [Regenerating datasets](https://github.com/CHYang25/LLM-BC#regenerating-datasets) for the full workflow.
+
+At evaluation time, the parent environment runners use this fork for transitions, success metrics, and optional video rendering. LC-BC and LC-DP policies consume the configured state or image observation; the language-label generator and LLM-Captioner are training-time components and add no policy inference cost.
+
+## Reproducibility bug fix
+
+The upstream MetaWorld adapter did not pass its seed into the MetaWorld benchmark constructor, so reconstructing and resetting an environment with the same seed could select different tasks. This fork fixes that behavior in [`llfbench/envs/metaworld/__init__.py`](llfbench/envs/metaworld/__init__.py) by:
+
+- constructing `metaworld.MT1` with the requested seed;
+- seeding Python and NumPy when resetting;
+- selecting from the seeded benchmark task list; and
+- forwarding the reset seed to the underlying environment.
+
+Use the same seed at construction and reset, as shown in the API example. Task-specific seeding has also been added to several new adapters, but the legacy upstream environment families have not all been audited for bitwise reproducibility.
 
 ## Testing
 
-The `tests` folder in the repo contains a few helpful scripts for testing the functionality of LLF-Bench.
-- *test_agents.py*: Creates a `UserAgent` that prints the 'observation' and 'feedback' produced by an LLF-Bench environment to the console, and reads user input from the console as an 'action'.
-- *test_basic_agents.py*: For a subset of LLF-Bench environments that support either a finite action space or admit a pre-built expert optimal policy, this script creates a `RandomActionAgent` and `ExpertActionAgent` to test supported LLF-Bench environments.
-- *test_envs.py*: Syntactically tests environments added to the LLF-Bench environment registry so as to be compatible with the expected semantics of LLF-Bench. This is a useful script to run on any new environments that are added or existing environments are customized in the benchmark.
+[`tests/test_envs.py`](tests/test_envs.py) checks the LLF observation contract, action and observation spaces, termination fields, and equivalence of two rollouts created with the same seed. Run a targeted environment prefix after installing its dependencies:
 
-## Baseline and skyline results
+```bash
+python tests/test_envs.py llf-metaworld-box-close-v2
+python tests/test_envs.py llf-highway-parking-v0
+```
 
+Additional task-specific smoke scripts are available for [Block Pushing](tests/block_pushing_test.py) and [ManiSkill](tests/mani_skill_test.py). Simulator tests can require oracle checkpoints, rendering libraries, and a suitable CPU/GPU backend.
 
-***<span style="color:red">Last updated: 06.12.2024</span>***
+## Citation and attribution
 
+If this fork contributes to an LCIL experiment, please cite both the LCIL paper and the original LLF-Bench paper:
 
-<img src="./all_feedback.jpg" width="750">
+```bibtex
+@article{yang2026languagecritique,
+  title   = {Language-Critique Imitation Learning from Suboptimal Demonstrations},
+  author  = {Yang, Chih-Han and Wu, Dai-Jie and Huang, Yun-Ping and Hsieh, Ping-Chun and Marino, Kenneth and Sun, Shao-Hua},
+  journal = {arXiv preprint arXiv:2607.01225},
+  year    = {2026}
+}
 
-Performance of basic agents using different LLMs, where the agents receive **all types feedback** and append the observation and feedback history to their contexts after each step. These numbers can be viewed as **"skyline"** performance, since receiving all feedback types typically provides all information to solve the problem near-optimally.
-&nbsp;
-&nbsp;
+@article{cheng2023llfbench,
+  title   = {{LLF-Bench}: Benchmark for Interactive Learning from Language Feedback},
+  author  = {Cheng, Ching-An and Kolobov, Andrey and Misra, Dipendra and Nie, Allen and Swaminathan, Adith},
+  journal = {arXiv preprint arXiv:2312.06853},
+  year    = {2023}
+}
+```
 
+This project is derived from [microsoft/LLF-Bench](https://github.com/microsoft/LLF-Bench). The Adroit integration also borrows code from [aravindr93/hand_dapg](https://github.com/aravindr93/hand_dapg). Please cite the underlying environment projects used by your experiments as appropriate.
 
-
-<img src="./partial_feedback.jpg" width="750">
-
-Performance of basic agents using different LLMs, where th agents receive **only reward, hindsight positive, and hindsight negative feedback** and append the observation and feedback history to their contexts after each step. These numbers can be viewed as **"baseline"** performance.
-
-
-Details: For GPT-3.5-Turbo and GPT-4, the statistics are computed over 10 episodes for all problem sets except Alfworld, for which, due to high problem instance variability, we used 50 episodes. For other language models, 50 episodes are used for all problem sets. For Metaworld, Alfworld, and Gridworld, the mean return is defined as the policy's success rate, which uniquely determines the standard error. Therefore, for the problems from these three problem sets, the st.e. is shown in gray.
-
-## Dataset Metadata
-The following table is necessary for this dataset to be indexed by search
-engines such as <a href="https://g.co/datasetsearch">Google Dataset Search</a>.
-<div itemscope itemtype="http://schema.org/Dataset">
-<table>
-  <tr>
-    <th>property</th>
-    <th>value</th>
-  </tr>
-  <tr>
-    <td>name</td>
-    <td><code itemprop="name">LLF-Bench: Benchmark for Interactive Learning from Language Feedback</code></td>
-  </tr>
-  <tr>
-    <td>alternateName</td>
-    <td><code itemprop="alternateName">LLF-Bench</code></td>
-  </tr>
-  <tr>
-    <td>url</td>
-    <td><code itemprop="url">https://microsoft.github.io/LLF-Bench/</code></td>
-  </tr>
-  <tr>
-    <td>description</td>
-    <td><code itemprop="description">LLF Bench is a benchmark that provides a diverse collection of interactive learning problems where the agent gets language feedback instead of rewards (as in RL) or action feedback (as in imitation learning). </code></td>
-  </tr>
-  <tr>
-    <td>provider</td>
-    <td>
-      <div itemscope itemtype="http://schema.org/Organization" itemprop="provider">
-        <table>
-          <tr>
-            <th>property</th>
-            <th>value</th>
-          </tr>
-          <tr>
-            <td>name</td>
-            <td><code itemprop="name">Microsoft</code></td>
-          </tr>
-          <tr>
-            <td>sameAs</td>
-            <td><code itemprop="sameAs">https://microsoft.com//</code></td>
-          </tr>
-        </table>
-      </div>
-    </td>
-  </tr>
-  <tr>
-    <td>license</td>
-    <td>
-      <div itemscope itemtype="http://schema.org/CreativeWork" itemprop="license">
-        <table>
-          <tr>
-            <th>property</th>
-            <th>value</th>
-          </tr>
-          <tr>
-            <td>name</td>
-            <td><code itemprop="name">MIT License</code></td>
-          </tr>
-          <tr>
-            <td>url</td>
-            <td><code itemprop="url">https://github.com/microsoft/LLF-Bench/blob/main/LICENSE/</code></td>
-          </tr>
-        </table>
-      </div>
-    </td>
-  </tr>
-  <tr>
-    <td>citation</td>
-    <td><code itemprop="citation">Cheng, C. A., Kolobov, A., Misra, D., Nie, A., & Swaminathan, A. (2023). Llf-bench: Benchmark for interactive learning from language feedback. arXiv preprint arXiv:2312.06853.</code></td>
-  </tr>
-</table>
-</div>
-
-
-## Contributing
-
-This project welcomes contributions and suggestions.  Most contributions require you to agree to a
-Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
-the rights to use your contribution. For details, visit https://cla.opensource.microsoft.com.
-
-When you submit a pull request, a CLA bot will automatically determine whether you need to provide
-a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
-provided by the bot. You will only need to do this once across all repos using our CLA.
-
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
-For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
-contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
-
-## Trademarks
-
-This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
-trademarks or logos is subject to and must follow
-[Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general).
-Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
-Any use of third-party trademarks or logos are subject to those third-party's policies.
+The fork retains the upstream [MIT License](LICENSE). Microsoft does not provide support for the modifications in this research fork; fork-specific issues should be reported to the [CHYang25/LLF-Bench issue tracker](https://github.com/CHYang25/LLF-Bench/issues) or the parent [LLM-BC repository](https://github.com/CHYang25/LLM-BC/issues).
