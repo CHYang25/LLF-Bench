@@ -133,6 +133,26 @@ class HighwayWrapper(LLFWrapper):
         turn_right = expert_action[1] > self.turn_thres
         turn_left = expert_action[1] < -self.turn_thres
 
+        # Raw signals underlying the language feedback: distance to the parking goal and the
+        # heading misalignment (these pick the align / reach / park stage), the signed throttle
+        # and steer gaps between the expert action and the taken action (the accelerate /
+        # decelerate / turn guidance), and the crash flag called out in the feedback.
+        features = dict(
+            goal_dist=float(np.linalg.norm(goal_pos - current_pos)),
+            heading_diff=float(self.angle_diff(goal_angle, current_angle)),
+            throttle_diff=float(expert_action[0] - action[0]),
+            steer_diff=float(expert_action[1] - action[1]),
+            crashed=float(is_crashed),
+        )
+        # Alternative reward summing the features (all error/penalty terms, matching the env's
+        # own negative goal-distance reward shape), exposed via info; the env reward remains
+        # the step reward.
+        feature_reward = (
+            - (features['goal_dist'] + features['heading_diff'])
+            - (abs(features['throttle_diff']) + abs(features['steer_diff']))
+            - features['crashed']
+        )
+
         feedback_type = self._feedback_type
         if not car_aligned:
             _stage_feedback = self.format(parking_prompts.align_car_prompts)
@@ -209,6 +229,8 @@ Turn right: {turn_right}
 
         observation = self._format_obs(self.current_observation)
         info["success"] = bool(info["is_success"])
+        info['features'] = features
+        info['feature_reward'] = float(feature_reward)
         return dict(instruction=None, observation=observation, feedback=feedback), reward, (terminated or info["success"]) and not is_crashed, truncated or is_crashed, info
 
     def textualize_observation(self, observation):

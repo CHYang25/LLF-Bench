@@ -510,6 +510,32 @@ class BlockPushingWrapper(LLFWrapper):
             moving_away = (np.linalg.norm(self.previous_observation[f"{self._current_block_to_reach}_translation"] - self.previous_observation[f"{self._current_target_to_reach}_translation"]) \
                                 <= np.linalg.norm(self.current_observation[f"{self._current_block_to_reach}_translation"] - self.current_observation[f"{self._current_target_to_reach}_translation"]))
 
+        # Raw signals underlying the language feedback: task-progress distances (reach the
+        # current block, push it to its target), the number of blocks already delivered, the
+        # signed per-axis guidance target_effector_translation - effector (direction + degree),
+        # and how much the effector moved closer to the expert target this step (hp/hn signal).
+        target_delta = target_effector_translation - self._current_effector_translation
+        features = dict(
+            effector_block_dist=float(np.linalg.norm(
+                self.current_observation[f"{self._current_block_to_reach}_translation"] - self._current_effector_translation
+            )),
+            block_target_dist=float(np.linalg.norm(
+                self.current_observation[f"{self._current_target_to_reach}_translation"] - self.current_observation[f"{self._current_block_to_reach}_translation"]
+            )),
+            num_reached_target_blocks=float(num_reached_target_blocks),
+            target_delta_x=float(target_delta[0]),
+            target_delta_y=float(target_delta[1]),
+            dist_delta=float(np.linalg.norm(target_effector_translation - previous_effector_translation) - np.linalg.norm(target_effector_translation - self._current_effector_translation)),
+        )
+        # Alternative reward summing the features (error terms negative, progress terms
+        # positive), exposed via info; the env reward remains the step reward.
+        feature_reward = (
+            - (features['effector_block_dist'] + features['block_target_dist'])
+            - (abs(features['target_delta_x']) + abs(features['target_delta_y']))
+            + features['num_reached_target_blocks']
+            + features['dist_delta']
+        )
+
         # Compute Feedback
         feedback = Feedback()
         reward = self.current_time_step.reward
@@ -584,6 +610,8 @@ stage: {self.stage}."""
             feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(recommend_action))
         observation = self._format_obs(self.current_observation)
         info = {'success': self.current_time_step.step_type == 2, 'discount': self.current_time_step.discount}
+        info['features'] = features
+        info['feature_reward'] = float(feature_reward)
         # obs, reward, terminated, truncated, info
         # The current TimeLimit wrapper from tf_agents can't distinguish termination from truncation
         return dict(instruction=None, observation=observation, feedback=feedback), float(reward), info['success'], info['success'] or self._any_block_out_of_bounds, info 

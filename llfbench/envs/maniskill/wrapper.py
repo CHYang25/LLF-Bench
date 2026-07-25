@@ -234,6 +234,34 @@ class ManiskillWrapper(LLFWrapper):
         box_hole_peg_reached = peg_gripped and current_box_hole_peg_dist < peg_half_len * 2
         box_hole_peg_inserted = peg_aligned and box_hole_peg_reached and current_box_hole_peg_dist < peg_half_len + COMPARE_THRESHOLD
 
+        # Raw signals underlying the language feedback: task-progress distances (gripper to peg,
+        # peg to the box hole) and the peg-vs-hole orientation angle that pick the reach / grip /
+        # align / insert stage, the number of sub-goals already achieved, and how much the
+        # gripper moved closer to the peg, the peg moved closer to the hole, and the peg rotated
+        # closer to alignment this step (the moving_away / reason signals).
+        stage_progress = (
+            int(bool(peg_reached)) + int(bool(peg_gripped)) + int(bool(peg_aligned))
+            + int(bool(box_hole_peg_reached)) + int(bool(box_hole_peg_inserted))
+        )
+        features = dict(
+            tcp_to_peg_dist=float(current_tcp_to_peg_dist),
+            box_hole_peg_dist=float(current_box_hole_peg_dist),
+            peg_hole_angle=float(current_peg_hole_angle),
+            stage_progress=float(stage_progress),
+            tcp_to_peg_progress=float(prev_tcp_to_peg_dist - current_tcp_to_peg_dist),
+            box_hole_peg_progress=float(prev_box_hole_peg_dist - current_box_hole_peg_dist),
+            peg_hole_align_progress=float(prev_peg_hole_angle - current_peg_hole_angle),
+        )
+        # Alternative reward summing the features (error terms negative, progress terms
+        # positive), exposed via info; the env reward remains the step reward.
+        feature_reward = (
+            - (features['tcp_to_peg_dist'] + features['box_hole_peg_dist'] + features['peg_hole_angle'])
+            + features['stage_progress']
+            + features['tcp_to_peg_progress']
+            + features['box_hole_peg_progress']
+            + features['peg_hole_align_progress']
+        )
+
         if not peg_reached:
             _stage_feedback = self.format(peg_insertion_side_prompts.reach_peg_feedback)
 
@@ -395,6 +423,8 @@ current_tcp_to_peg_dist: {current_tcp_to_peg_dist}."""
             feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(expert_action))
 
         observation = self._format_obs(observation)
+        info['features'] = features
+        info['feature_reward'] = float(feature_reward)
         return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated.cpu().item(), truncated.cpu().item(), info
 
     def _step_roll_ball(self, action):

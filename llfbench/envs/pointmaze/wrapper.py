@@ -114,6 +114,7 @@ class PointmazeWrapper(LLFWrapper):
     def _step(self, action):
 
         # environment step
+        previous_pos = self.current_pos.copy()  # position before the step (for the moved-closer feature)
         self._current_observation, reward, done, info = self.env.step(action)
 
         feedback_type = self._feedback_type
@@ -137,7 +138,8 @@ class PointmazeWrapper(LLFWrapper):
         _stage_feedback = self.format(pointmaze_prompts.navigate_prompts,direction=navi_dir)
         
         # decide if the agent is moving away
-        moving_away = self.angle_between_vectors(action, self._prev_expert_action) > self.moving_away_thres
+        action_expert_angle = self.angle_between_vectors(action, self._prev_expert_action)
+        moving_away = action_expert_angle > self.moving_away_thres
         self._prev_expert_action = expert_action
         self._prev_grid = self.current_grid
 
@@ -148,6 +150,26 @@ class PointmazeWrapper(LLFWrapper):
         deccel = abs(acc_theta) > self.moving_deccel_thres
         turn_left = self.moving_forward_thres < acc_theta and acc_theta < np.pi - self.moving_forward_thres
         turn_right = -self.moving_forward_thres > acc_theta and acc_theta > -(np.pi - self.moving_forward_thres)
+
+        # Raw signals underlying the language feedback: task-progress distances (to the goal
+        # and to the next waypoint that sets the navigation direction), the angle between the
+        # action and the expert action (the hp/hn signal), the signed angle between the current
+        # velocity and the expert action (drives the forward/turn/decelerate guidance), and how
+        # much the agent moved closer to the next waypoint this step.
+        features = dict(
+            goal_dist=float(np.linalg.norm(self.current_pos - self.env_target)),
+            waypoint_dist=float(np.linalg.norm(self.current_pos - next_waypoint)),
+            action_expert_angle=float(action_expert_angle),
+            accel_angle=float(acc_theta),
+            dist_delta=float(np.linalg.norm(next_waypoint - previous_pos) - np.linalg.norm(next_waypoint - self.current_pos)),
+        )
+        # Alternative reward summing the features (error terms negative, progress terms
+        # positive), exposed via info; the env reward remains the step reward.
+        feature_reward = (
+            - (features['goal_dist'] + features['waypoint_dist'])
+            - (features['action_expert_angle'] + abs(features['accel_angle']))
+            + features['dist_delta']
+        )
 
         # Compute feedback
         feedback = Feedback()
@@ -187,6 +209,8 @@ class PointmazeWrapper(LLFWrapper):
             feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(expert_action))
         observation = self._format_obs(self.current_observation)
         info.update({'success': success, 'q_pos': self.current_pos, 'q_vel': self.current_vel, 'goal': self.env_target})
+        info['features'] = features
+        info['feature_reward'] = float(feature_reward)
         # obs, reward, terminated, truncated, info
         # The current TimeLimit wrapper from tf_agents can't distinguish termination from truncation
         return dict(instruction=None, observation=observation, feedback=feedback), float(reward), success, not success and done, info 

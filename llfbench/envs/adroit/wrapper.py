@@ -202,6 +202,33 @@ class AdroitWrapper(LLFWrapper):
         wrist_mismatch = np.linalg.norm(wrist_delta) / np.sqrt(2)
         finger_mismatch = np.linalg.norm(finger_delta) / np.sqrt(22)
 
+        # Raw signals underlying the language feedback: task-progress distances (reach the
+        # ball, bring the ball to the target), the ball height (grip/lift progress), the overall
+        # action-vs-expert error (the hp/hn optimality signal), the per-actuator-group mismatches
+        # that drive the arm/wrist/finger guidance, and how much the palm moved closer to the
+        # ball and the ball moved closer to the target this step.
+        features = dict(
+            palm_to_ball_dist=float(palm_to_ball_dist),
+            ball_to_target_dist=float(ball_to_target_dist),
+            ball_height=float(ball_pos[2]),
+            action_error=float(action_error),
+            arm_mismatch=float(arm_mismatch),
+            wrist_mismatch=float(wrist_mismatch),
+            finger_mismatch=float(finger_mismatch),
+            palm_to_ball_progress=float(palm_to_ball_progress),
+            ball_to_target_progress=float(ball_to_target_progress),
+        )
+        # Alternative reward summing the features (error terms negative, progress terms
+        # positive), exposed via info; the env reward remains the step reward.
+        feature_reward = (
+            - (features['palm_to_ball_dist'] + features['ball_to_target_dist'])
+            - features['action_error']
+            - (features['arm_mismatch'] + features['wrist_mismatch'] + features['finger_mismatch'])
+            + features['ball_height']
+            + features['palm_to_ball_progress']
+            + features['ball_to_target_progress']
+        )
+
         def _axis_recommend(vec):
             recon = []
             if vec[0] > self.recon_threshold:
@@ -326,6 +353,8 @@ class AdroitWrapper(LLFWrapper):
         self._prev_palm_to_target_diff = palm_to_target_diff
         self._prev_ball_to_target_diff = ball_to_target_diff
         observation = self._format_obs(self.current_observation)
+        info['features'] = features
+        info['feature_reward'] = float(feature_reward)
         return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or goal_reached, truncated, info
         
 
@@ -407,6 +436,38 @@ class AdroitWrapper(LLFWrapper):
         finger_mismatch = np.linalg.norm(finger_delta) / np.sqrt(22)
         get_hammer_progress = np.linalg.norm(hammer_pos - palm_pos) - np.linalg.norm(prev_hammer_pos - palm_pos)
         nail_progress = nail_displace - prev_nail_displace
+
+        # Raw signals underlying the language feedback: task-progress distances (reach the
+        # hammer, bring the hammer head to the nail, drive the nail to the goal), the hammer
+        # height (lift progress) and nail displacement (drive progress), the overall action-vs-
+        # expert error (the hp/hn optimality signal), the per-actuator-group mismatches driving
+        # the arm/wrist/finger guidance, and how much the palm moved closer to the hammer and
+        # the nail advanced this step. get_hammer_progress is cur-minus-prev distance (positive
+        # means moving away), so it is negated to keep "closer is positive".
+        features = dict(
+            palm_to_hammer_dist=float(palm_to_hammer_dist),
+            hammer_head_to_nail_dist=float(hammer_head_to_nail_dist),
+            nail_to_goal_dist=float(nail_to_goal_dist),
+            hammer_height=float(hammer_pos[2]),
+            nail_displace=float(nail_displace),
+            action_error=float(action_error),
+            arm_mismatch=float(arm_mismatch),
+            wrist_mismatch=float(wrist_mismatch),
+            finger_mismatch=float(finger_mismatch),
+            palm_to_hammer_progress=float(-get_hammer_progress),
+            nail_progress=float(nail_progress),
+        )
+        # Alternative reward summing the features (error terms negative, progress terms
+        # positive), exposed via info; the env reward remains the step reward.
+        feature_reward = (
+            - (features['palm_to_hammer_dist'] + features['hammer_head_to_nail_dist'] + features['nail_to_goal_dist'])
+            - features['action_error']
+            - (features['arm_mismatch'] + features['wrist_mismatch'] + features['finger_mismatch'])
+            + features['hammer_height']
+            + features['nail_displace']
+            + features['palm_to_hammer_progress']
+            + features['nail_progress']
+        )
 
         # helper: convert a desired task-space vector into a language direction
         # heuristic convention here:
@@ -544,6 +605,8 @@ class AdroitWrapper(LLFWrapper):
         observation = self._format_obs(self.current_observation)
         self.t += 1
         # info["video"] = [self.env.render()[::-1]] if self.env._render_video else None
+        info['features'] = features
+        info['feature_reward'] = float(feature_reward)
         return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or info['success'], truncated, info
 
     def _reset(self, *, seed = None, options = None):

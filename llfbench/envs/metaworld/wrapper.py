@@ -350,6 +350,32 @@ class MetaworldWrapper(LLFWrapper):
             gripper_feedback = self.format(open_gripper_feedback)
         else:
             gripper_feedback = None
+
+        # Raw signals underlying the language feedback: task-progress distances (reach lid,
+        # bring lid to box, lift lid), the signed per-axis guidance target_pos[:3] - hand_pos
+        # (direction + degree), the signed gripper mismatch, and how much the hand moved
+        # closer to the expert target this step (the hp/hn signal).
+        target_delta = target_pos[:3] - self._current_pos
+        features = dict(
+            hand_lid_dist=float(np.linalg.norm(self._current_lid_pos - self._current_pos)),
+            lid_box_dist=float(np.linalg.norm(np.array([*self._current_box_pos, 0.15]) - self._current_lid_pos)),  # 0.15 is the scripted policy's lid placing height
+            lid_height=float(self._current_lid_pos[2]),
+            target_delta_x=float(target_delta[0]),
+            target_delta_y=float(target_delta[1]),
+            target_delta_z=float(target_delta[2]),
+            gripper_diff=float(target_pos[3] - action[3]),
+            dist_delta=float(np.linalg.norm(target_pos[:3] - previous_pos) - np.linalg.norm(target_pos[:3] - self._current_pos)),
+        )
+        # Alternative reward summing the features (error terms negative, progress terms
+        # positive), exposed via info; the env reward remains the step reward.
+        feature_reward = (
+            - (features['hand_lid_dist'] + features['lid_box_dist'])
+            - (abs(features['target_delta_x']) + abs(features['target_delta_y']) + abs(features['target_delta_z']))
+            - abs(features['gripper_diff'])
+            + features['lid_height']
+            + features['dist_delta']
+        )
+
         # Compute feedback
         feedback = Feedback()
         if 'r' in  feedback_type:
@@ -416,6 +442,8 @@ class MetaworldWrapper(LLFWrapper):
         observation = self._format_obs(observation)
         info['success'] = bool(info['success'])
         info['video'] = video if self.env._render_video else None
+        info['features'] = features
+        info['feature_reward'] = float(feature_reward)
         return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or info['success'], truncated, info
     
     def _step_door_close_v2(self, action):
@@ -848,6 +876,30 @@ class MetaworldWrapper(LLFWrapper):
             gripper_feedback = self.format(open_gripper_feedback)
         else:
             gripper_feedback = None
+
+        # Raw signals underlying the language feedback: task-progress distances (reach cube,
+        # push cube to goal), the signed per-axis guidance target_pos[:3] - hand_pos
+        # (direction + degree), the signed gripper mismatch, and how much the hand moved
+        # closer to the expert target this step (the hp/hn signal).
+        target_delta = target_pos[:3] - self._current_pos
+        features = dict(
+            hand_cube_dist=float(np.linalg.norm(self._current_cube_pos - self._current_pos)),
+            cube_goal_dist=float(np.linalg.norm(self._current_cube_pos - self._goal_pos)),
+            target_delta_x=float(target_delta[0]),
+            target_delta_y=float(target_delta[1]),
+            target_delta_z=float(target_delta[2]),
+            gripper_diff=float(target_pos[3] - action[3]),
+            dist_delta=float(np.linalg.norm(target_pos[:3] - previous_pos) - np.linalg.norm(target_pos[:3] - self._current_pos)),
+        )
+        # Alternative reward summing the features (error terms negative, progress terms
+        # positive), exposed via info; the env reward remains the step reward.
+        feature_reward = (
+            - (features['hand_cube_dist'] + features['cube_goal_dist'])
+            - (abs(features['target_delta_x']) + abs(features['target_delta_y']) + abs(features['target_delta_z']))
+            - abs(features['gripper_diff'])
+            + features['dist_delta']
+        )
+
         # Compute feedback
         feedback = Feedback()
         if 'r' in  feedback_type:
@@ -912,6 +964,8 @@ class MetaworldWrapper(LLFWrapper):
         observation = self._format_obs(observation)
         info['success'] = bool(info['success'])
         info['video'] = video if self.env._render_video else None
+        info['features'] = features
+        info['feature_reward'] = float(feature_reward)
         return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or info['success'], truncated, info
 
     def _reset(self, *, seed=None, options=None):
