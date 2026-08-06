@@ -17,6 +17,7 @@ from llfbench.envs.metaworld.utils_prompts.conjunction_prompts import positive_c
 from llfbench.envs.metaworld.utils_prompts.recommend_prompts import recommend_templates_sampler
 from llfbench.envs.metaworld.gains import P_GAINS, TERM_REWARDS
 import metaworld
+import mujoco
 import importlib
 import json
 from textwrap import dedent, indent
@@ -52,6 +53,7 @@ class MetaworldWrapper(LLFWrapper):
 
         if self.env.env_name == 'box-close-v2':
             self._step = self._step_box_close_v2
+            self._step_dummy = self._step_dummy_box_close_v2
             self.lid_gripped_threshold = 1.5e-1
             self.lid_lifted_threshold = 6e-2
             self.initial_lid_pos = None
@@ -444,6 +446,212 @@ class MetaworldWrapper(LLFWrapper):
         info['video'] = video if self.env._render_video else None
         info['features'] = features
         info['feature_reward'] = float(feature_reward)
+        return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or info['success'], truncated, info
+    
+    def _snapshot_state(self):
+        """ Snapshot the simulator state and the step bookkeeping of the env and
+            of this wrapper, so that a step can be rolled back (see the dummy steps). """
+        mw_env = self.mw_env
+        # mjSTATE_INTEGRATION covers everything needed to resume the integration:
+        # time, qpos, qvel, act, ctrl, mocap (which drives the hand), applied forces,
+        # userdata and the warmstart accelerations.
+        spec = mujoco.mjtState.mjSTATE_INTEGRATION
+        physics = np.empty(mujoco.mj_stateSize(mw_env.model, spec), dtype=np.float64)
+        mujoco.mj_getState(mw_env.model, mw_env.data, physics, spec)
+        return dict(
+            physics=physics,
+            curr_path_length=mw_env.curr_path_length,
+            prev_obs=None if mw_env._prev_obs is None else np.copy(mw_env._prev_obs),  # frame stacking
+            last_stable_obs=None if mw_env._last_stable_obs is None else np.copy(mw_env._last_stable_obs),
+            did_see_sim_exception=mw_env._did_see_sim_exception,
+            current_observation=None if self._current_observation is None else np.copy(self._current_observation),
+            prev_expert_action=None if self._prev_expert_action is None else self._prev_expert_action.copy(),
+        )
+
+    def _restore_state(self, snapshot):
+        """ Restore a snapshot taken by self._snapshot_state. """
+        mw_env = self.mw_env
+        spec = mujoco.mjtState.mjSTATE_INTEGRATION
+        mujoco.mj_setState(mw_env.model, mw_env.data, snapshot['physics'], spec)
+        mujoco.mj_forward(mw_env.model, mw_env.data)  # recompute the derived quantities (body/site poses, ...)
+        # mj_forward overwrites the solver warmstart, which is part of the state; re-apply
+        # the snapshot so that the next real step integrates exactly as if nothing happened.
+        mujoco.mj_setState(mw_env.model, mw_env.data, snapshot['physics'], spec)
+        mw_env.curr_path_length = snapshot['curr_path_length']
+        mw_env._prev_obs = snapshot['prev_obs']
+        mw_env._last_stable_obs = snapshot['last_stable_obs']
+        mw_env._did_see_sim_exception = snapshot['did_see_sim_exception']
+        self._current_observation = snapshot['current_observation']
+        self._prev_expert_action = snapshot['prev_expert_action']
+
+    def _step_dummy_box_close_v2(self, action):
+        # Same as self._step_box_close_v2, except that the simulator state and all the
+        # step bookkeeping are rolled back once the observation, reward, feedback and
+        # info have been computed, so the env does not actually advance. The returned
+        # values still describe the state the action would have led to.
+        snapshot = self._snapshot_state()
+        snapshot_initial_lid_pos = self.initial_lid_pos
+
+        # Run P controller until convergence or timeout
+        # action is viewed as the desired position + grab_effort
+        previous_pos = self._current_pos  # the position of the hand before moving
+        if self.initial_lid_pos is None:
+            self.initial_lid_pos = self._current_lid_pos
+            
+        if self.control_relative_position:
+            action = action.copy()
+            action[:3] += self._current_pos  # turn relative position to absolute position
+
+        video = []
+        for _ in range(self.p_control_time_out):
+            control = self.p_control(action)  # this controls the hand to move an absolute position
+            observation, reward, terminated, truncated, info = self.env.step(control)
+            self._current_observation = observation
+            desired_pos = action[:3]
+            video.append(self.env.render()[::-1] if self.env._render_video else None)
+            if np.abs(desired_pos - self._current_pos).max() < self.p_control_threshold:
+                break
+
+        feedback_type = self._feedback_type
+        # Some pre-computation of the feedback
+        expert_action = self.expert_action  # absolute or relative
+        if self._prev_expert_action is None:
+            self._prev_expert_action = expert_action.copy()
+        # Target pos is in absolute position
+        if self.control_relative_position:
+            target_pos = self._prev_expert_action.copy()
+            target_pos[:3] += self._current_pos
+        else:
+            target_pos = self._prev_expert_action
+        
+        self._prev_expert_action = expert_action.copy()
+
+        # Compute Recommend Target
+        if self.control_relative_position:
+            recommend_target_pos = expert_action
+            recommend_target_pos[:3] += self._current_pos
+        else:
+            recommend_target_pos = expert_action
+
+        moving_away = np.linalg.norm(target_pos[:3]-previous_pos) < np.linalg.norm(target_pos[:3]-self._current_pos)
+        moving_away_axis = [
+            target_pos[i] - previous_pos[i] < target_pos[i] - self._current_pos[i]
+            for i in range(3)
+        ]
+        moving_away_direction = direction_converter(target_pos[:3] - self._current_pos)
+        moving_away_degree = degree_adverb_converter(target_pos[:3] - self._current_pos)
+
+        lid_gripped = np.linalg.norm(self._current_lid_pos - self._current_pos) < self.lid_gripped_threshold\
+                        and np.linalg.norm(self._current_lid_pos - self.initial_lid_pos) > 0\
+                        and action[3] > 0.5
+        
+        lid_lifted = self._current_lid_pos[2] > self.lid_lifted_threshold
+
+        if target_pos[3] > 0.5 and action[3] < 0.5:  # the gripper should be closed instead.
+            gripper_feedback = self.format(close_gripper_feedback)
+        elif target_pos[3] < 0.5 and action[3] > 0.5:  #the gripper should be open instead.
+            gripper_feedback = self.format(open_gripper_feedback)
+        else:
+            gripper_feedback = None
+
+        # Raw signals underlying the language feedback: task-progress distances (reach lid,
+        # bring lid to box, lift lid), the signed per-axis guidance target_pos[:3] - hand_pos
+        # (direction + degree), the signed gripper mismatch, and how much the hand moved
+        # closer to the expert target this step (the hp/hn signal).
+        target_delta = target_pos[:3] - self._current_pos
+        features = dict(
+            hand_lid_dist=float(np.linalg.norm(self._current_lid_pos - self._current_pos)),
+            lid_box_dist=float(np.linalg.norm(np.array([*self._current_box_pos, 0.15]) - self._current_lid_pos)),  # 0.15 is the scripted policy's lid placing height
+            lid_height=float(self._current_lid_pos[2]),
+            target_delta_x=float(target_delta[0]),
+            target_delta_y=float(target_delta[1]),
+            target_delta_z=float(target_delta[2]),
+            gripper_diff=float(target_pos[3] - action[3]),
+            dist_delta=float(np.linalg.norm(target_pos[:3] - previous_pos) - np.linalg.norm(target_pos[:3] - self._current_pos)),
+        )
+        # Alternative reward summing the features (error terms negative, progress terms
+        # positive), exposed via info; the env reward remains the step reward.
+        feature_reward = (
+            - (features['hand_lid_dist'] + features['lid_box_dist'])
+            - (abs(features['target_delta_x']) + abs(features['target_delta_y']) + abs(features['target_delta_z']))
+            - abs(features['gripper_diff'])
+            + features['lid_height']
+            + features['dist_delta']
+        )
+
+        # Compute feedback
+        feedback = Feedback()
+        if 'r' in  feedback_type:
+            feedback.r = self.format(r_feedback, reward=reward)
+        if 'hp' in feedback_type:  # moved closer to the expert goal
+            first_conjunction_used = False
+            if not moving_away:
+                if lid_gripped and lid_lifted:
+                    _reason_goal = self.format(box_close_v2_prompts.move_to_box_feedback)
+                elif lid_gripped and not lid_lifted:
+                    _reason_goal = self.format(box_close_v2_prompts.lift_up_lid_feedback)
+                elif not lid_gripped:
+                    _reason_goal = self.format(box_close_v2_prompts.move_to_lid_feedback)
+
+                _feedback = _reason_goal + positive_conjunctions_sampler() + self.format(task_hp_feedback)
+
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                        _feedback += conj + gripper_feedback[0].lower() + gripper_feedback[1:]
+                        first_conjunction_used = True
+                    else:
+                        _feedback = gripper_feedback
+
+                for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
+                    if away:
+                        conj = positive_conjunctions_sampler() if first_conjunction_used else negative_conjunctions_sampler()
+                        _feedback += conj + recommend_templates_sampler().format(degree=degree, direction=direction)
+                        first_conjunction_used = True
+
+            else:
+                _feedback = None
+
+            feedback.hp = _feedback 
+        if 'hn' in feedback_type:  # moved away from the expert goal
+            # position feedback
+            if moving_away:
+                if lid_gripped and lid_lifted:
+                    _reason_goal = self.format(box_close_v2_prompts.move_to_box_feedback)
+                elif lid_gripped and not lid_lifted:
+                    _reason_goal = self.format(box_close_v2_prompts.lift_up_lid_feedback)
+                elif not lid_gripped:
+                    _reason_goal = self.format(box_close_v2_prompts.move_to_lid_feedback)
+
+                _feedback = _reason_goal + negative_conjunctions_sampler() + self.format(task_hn_feedback)
+
+                # gripper feedback
+                if gripper_feedback is not None:
+                    if _feedback is not None:
+                        _feedback += positive_conjunctions_sampler() + gripper_feedback[0].lower() + gripper_feedback[1:]
+                    else:
+                        _feedback = gripper_feedback
+
+                for away, direction, degree in zip(moving_away_axis, moving_away_direction, moving_away_degree):
+                    if away:
+                        _feedback += positive_conjunctions_sampler() + recommend_templates_sampler().format(degree=degree, direction=direction)
+            
+            else:
+                _feedback = None
+
+            feedback.hn = _feedback
+        if 'fp' in feedback_type:  # suggest the expert goal
+            feedback.fp = self.format(fp_feedback, expert_action=self.textualize_expert_action(recommend_target_pos))
+        observation = self._format_obs(observation)
+        info['success'] = bool(info['success'])
+        info['video'] = video if self.env._render_video else None
+        info['features'] = features
+        info['feature_reward'] = float(feature_reward)
+
+        # This is a dummy step: put the simulator and all the bookkeeping back to
+        # where they were before the step, now that everything above is computed.
+        self._restore_state(snapshot)
+        self.initial_lid_pos = snapshot_initial_lid_pos
         return dict(instruction=None, observation=observation, feedback=feedback), float(reward), terminated or info['success'], truncated, info
     
     def _step_door_close_v2(self, action):

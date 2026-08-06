@@ -11,6 +11,9 @@ from llfbench.envs import pusht
 from llfbench.envs import pointmaze
 from llfbench.envs import adroit
 
+if importlib.util.find_spec('gymnasium_robotics'):
+    from llfbench.envs import kitchen
+
 if importlib.util.find_spec('metaworld'):
     from llfbench.envs import metaworld
 

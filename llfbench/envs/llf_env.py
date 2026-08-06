@@ -299,8 +299,37 @@ class LLFWrapper(gym.Wrapper):
         assert 'success' in info, "The info must contain a key 'success'."
         return observation, reward, terminal, truncated, info
 
+    def step_dummy(self, action: Any) -> Tuple[Dict[str, Any], float, bool, bool,  Dict[str, Any]]:
+        """ Step the environment and return the observation, reward, terminal, and info."""
+        observation, reward, terminal, truncated, info = self._step_dummy(action)
+        self.obs_check(observation)
+        if observation['feedback'] is not None:
+            observation['feedback'] = self._verbalize_feedback(observation['feedback'])
+        assert 'success' in info, "The info must contain a key 'success'."
+        return observation, reward, terminal, truncated, info
+
     def _step(self, action: Any) -> Tuple[Union[str, Dict[str, Any]], float, bool, bool, Dict[str, Any]]:
         """ Implement this in the subclass.
+            Use self._feedback_type (which is a set) to determine the feedback.
+
+            Returns:
+                observation: The observation dict. In the dict, the keys are
+                'observation', 'feedback', and 'instruction'. 'feedback' should
+                be a Feedback object or None.
+
+                reward: The reward.
+
+                terminal: Whether the episode is done.
+
+                truncated: Whether the episode is truncated.
+
+                info: Additional info.
+
+        """
+        raise NotImplementedError
+
+    def _step_dummy(self, action: Any) -> Tuple[Union[str, Dict[str, Any]], float, bool, bool, Dict[str, Any]]:
+        """ Implement this in the subclass. It steps then restore
             Use self._feedback_type (which is a set) to determine the feedback.
 
             Returns:
