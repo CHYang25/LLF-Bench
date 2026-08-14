@@ -111,16 +111,16 @@ setuptools.setup(
         'metaworld': ['metaworld@git+https://github.com/Farama-Foundation/Metaworld.git@c822f28#egg=metaworld'],
         'alfworld': [ 'alfworld>=0.3.0' ],
         'maniskill': [ 'mani_skill==3.0.0b20' ],
-        'blockpushing': [ 'tf-agents==0.19.0' ],
-        'pusht': [
-            'pymunk==6.2.1',
-            'scikit-image==0.19.3',
-            'shapely==1.8.4',
-            'cffi==1.17.1'
-        ],
+        # 'blockpushing': [ 'tf-agents==0.19.0' ],
+        # 'pusht': [
+        #     'pymunk==6.2.1',
+        #     'scikit-image==0.19.3',
+        #     'shapely==1.8.4',
+        #     'cffi==1.17.1'
+        # ],
         'highway': [ 'stable-baselines3==2.2.1' , "mujoco==2.3.7" ],
         'adroit': [ 
-            'gymnasium-robotics==1.2.0' , 
+            # 'gymnasium-robotics==1.2.0' , 
             'mjrl @ git+https://github.com/aravindr93/mjrl.git' 
         ]
     },

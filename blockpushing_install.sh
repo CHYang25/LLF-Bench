@@ -1,6 +1,7 @@
 pip install pybullet==3.2.6
 pip install tf-agents==0.19.0
 pip install typing-extensions==4.12.2
+pip install gymnasium-robotics==1.2.1
 pip install pygame==2.6.1
 pip install tensorflow==2.15.1
 pip install mujoco==2.3.7
