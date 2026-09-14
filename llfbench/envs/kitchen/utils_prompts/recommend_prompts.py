@@ -1,43 +1,34 @@
-move_down_recommend = [
-    "you should reach down.",
-    "you need to reach down.",
-    "you should move downward.",
-    "you need to move down.",
+# The pools above are fixed sentences with no degree slot; the wrapper builds its movement
+# guidance from the templates below instead, pairing a direction from
+# ``utils_prompts.direction_prompts`` with a degree adverb from ``utils_prompts.degree_prompts``.
+
+move_recommend_templates = [
+    "move {direction} {degree}.",
+    "please move {direction} {degree}.",
+    "you should move {direction} {degree}.",
+    "make a move {direction} {degree}.",
+    "you need to move {direction} {degree}.",
+    "take the gripper {direction} {degree}.",
 ]
 
-move_up_recommend = [
-    "you should lift up.",
-    "you need to lift up.",
-    "you should move upward.",
-    "you need to move up.",
+turn_recommend_templates = [
+    "you should {direction} {degree}.",
+    "you need to {direction} {degree}.",
+    "you can {direction} {degree}.",
+    "be sure to {direction} {degree}.",
+    "make sure to {direction} {degree}.",
 ]
 
-move_right_recommend = [
-    "you should turn to the right.",
-    "you need to turn to the right.",
-    "you should move to the right.",
-    "you need to move right.",
+close_gripper_recommend = [
+    "you should close the gripper.",
+    "you need to close the gripper.",
+    "close the fingers on it.",
+    "make sure to close the gripper.",
 ]
 
-move_left_recommend = [
-    "you should turn to the left.",
-    "you need to turn to the left.",
-    "you should move to the left.",
-    "you need to move left.",
-]
-
-move_forward_recommend = [
-    "you should move forward.",
-    "you need to move forward.",
-    "you should move toward the front.",
-    "you need to move to the front.",
-    "you should go forward.",
-]
-
-move_backward_recommend = [
-    "you should move backward.",
-    "you need to move backward.",
-    "you should move toward the back.",
-    "you need to move to the back.",
-    "you should go backward.",
+open_gripper_recommend = [
+    "you should open the gripper.",
+    "you need to open the gripper.",
+    "release the fingers.",
+    "make sure to open the gripper.",
 ]
