@@ -2,21 +2,11 @@ from typing import Dict, SupportsFloat, Union, List
 import numpy as np
 from llfbench.envs.llf_env import LLFWrapper, Feedback
 from llfbench.envs.kitchen.prompts import *
-from llfbench.envs.kitchen.task_prompts import franka_kitchen_prompts as kt_prompts
-from llfbench.envs.kitchen.utils_prompts.conjunction_prompts import positive_conjunctions_sampler, negative_conjunctions_sampler
-from llfbench.envs.kitchen.utils_prompts.degree_prompts import (
-    move_degree_adverb_converter,
-    turn_degree_adverb_converter,
-)
-from llfbench.envs.kitchen.utils_prompts.direction_prompts import (
-    move_direction_converter,
-    turn_direction_converter,
-)
-from llfbench.envs.kitchen.utils_prompts.recommend_prompts import (
-    move_recommend_templates,
-    turn_recommend_templates,
-    close_gripper_recommend,
-    open_gripper_recommend,
+from llfbench.envs.kitchen.multistep_merger import (
+    MOVE_DEADBAND,
+    TURN_DEADBAND,
+    KitchenMultistepMerger,
+    KitchenStepRecord,
 )
 from llfbench.envs.kitchen.scripted_policy import (
     ACTION_VELOCITY_RANGE,
@@ -40,10 +30,11 @@ import gymnasium.spaces as spaces
 # so that we won't get scientific notation
 np.set_printoptions(suppress=True)
 
-#: Below this the remaining Cartesian error on an axis is not worth a sentence (metres).
-_MOVE_DEADBAND = 5e-3
-#: Below this the expert is not asking for a meaningful wrist rotation (radians).
-_TURN_DEADBAND = 2e-2
+#: Below this the remaining Cartesian error on an axis is not worth a clause (metres), and
+#: below this the expert is not asking for a meaningful wrist rotation (radians). Both live
+#: with the merger so the multistep aggregation applies the very same cut-offs.
+_MOVE_DEADBAND = MOVE_DEADBAND
+_TURN_DEADBAND = TURN_DEADBAND
 #: A translation axis only counts as "moved away from" once it got measurably worse
 #: (metres). Set at the damped-least-squares IK's own per-axis jitter: the controller does
 #: not travel exactly along the commanded direction, so a perfectly tracked expert reach
@@ -52,25 +43,6 @@ _TURN_DEADBAND = 2e-2
 _MOVE_REGRESSION_EPS = 2e-3
 #: A commanded direction below this is treated as "no preference" in the agreement test.
 _AGREEMENT_EPS = 1e-8
-
-#: Scripted-policy FSM phase -> stage prompt pool, and whether that pool names an object.
-#: Kept as a table rather than a chain of ifs because the phase set is fixed by
-#: ``scripted_policy.PHASE_SEQUENCE`` plus the three phases outside it.
-_PHASE_PROMPTS = {
-    'orient_forward': (kt_prompts.orient_forward_feedback, ()),
-    'select_subtask': (kt_prompts.select_subtask_feedback, ()),
-    'move_to_precontact': (kt_prompts.move_to_precontact_feedback, ('goal', 'object')),
-    'align': (kt_prompts.align_feedback, ('goal', 'object')),
-    'approach': (kt_prompts.approach_feedback, ('goal', 'object')),
-    'contact_or_grasp': (kt_prompts.contact_or_grasp_feedback, ('goal', 'object')),
-    'manipulate': (kt_prompts.manipulate_feedback, ('goal', 'manipulation')),
-    'kettle_transport': (kt_prompts.kettle_transport_feedback, ('goal',)),
-    'recede': (kt_prompts.recede_feedback, ('goal', 'object')),
-    'verify': (kt_prompts.verify_feedback, ('goal',)),
-    'retreat': (kt_prompts.retreat_feedback, ('object',)),
-    'idle': (kt_prompts.idle_feedback, ()),
-}
-
 
 class KitchenWrapper(LLFWrapper):
 
@@ -121,6 +93,9 @@ class KitchenWrapper(LLFWrapper):
         self.inference_expert_action = bool(inference_expert_action)
 
         self.debug = debug
+        # Renders the hp/hn text from the step record. It is the same object LLM-BC uses to
+        # merge the records of an action chunk, so a single-step label is a one-record window.
+        self._merger = KitchenMultistepMerger()
         self._current_observation = None
         # The Cartesian expert action for the state the agent last acted *from*. All the
         # language feedback is phrased in task space, so the geometry is kept in Cartesian
@@ -209,22 +184,12 @@ class KitchenWrapper(LLFWrapper):
     def _step(self, action):
         action = np.asarray(action, dtype=np.float64).reshape(-1)
 
-        # 1. one wrapper step == one env step (see the class docstring).
-        #
-        # The gripper position before the step is the reference the movement guidance uses
-        # to decide which axes the agent made *worse*; it has to be read before `env.step`
-        # advances the sim.
+        # 1. one wrapper step == one env step; read state before it advances.
         eef_before = self._sim.eef_pos.copy()
-        # Which way the joint command points in task space, so the Cartesian feedback below can
-        # judge it against the expert's Cartesian recommendation. The Jacobian this uses is
-        # evaluated at the current pose, so it too has to be read before the step.
-        # Nothing consumes it once the expert is off: every sentence and feature it feeds is
-        # phrased *against* the expert's plan.
+        # Joint command's task-space direction, for judging against the expert's plan below.
         action_cartesian = (self._cartesian_reading_of(action)
                             if self.inference_expert_action else None)
-        # One wrapper step holds the action for `action_repeat` env steps (see the class
-        # docstring). Rewards are summed because the kitchen reward counts subtasks completed
-        # on a step, so a repeat that finishes two of them must report both.
+        # Hold the action for `action_repeat` env steps, summing reward across them.
         reward = 0.0
         terminated = truncated = False
         for _ in range(self._policy.action_repeat):
@@ -238,18 +203,9 @@ class KitchenWrapper(LLFWrapper):
 
         feedback_type = self._feedback_type
 
-        # 2. recompute the expert action from the *new* state.
-        #
-        # Pairing convention (same as MetaworldWrapper._step_general): the feedback about
-        # the step that was just taken is judged against `self._prev_expert_cartesian`, which
-        # is the expert's action for the state the agent acted *from*. The `fp` suggestion
-        # instead uses `expert_action`, the expert's action for the state the agent has
-        # arrived *at*, i.e. what to do next.
-        #
-        # With the expert switched off none of this is computed: the FSM is never advanced,
-        # so there is no plan to pair, no diagnostics to report the stage from, and no
-        # recommendation to judge the agent against. Every part below degrades to its empty
-        # value rather than to a stale one.
+        # 2. recompute the expert action from the new state; pair the just-taken step's
+        # feedback against `_prev_expert_cartesian` (state acted from), and `fp` against the
+        # fresh `expert_action` (state arrived at). All degrade to empty when expert is off.
         expert_action = self.expert_action
         expert_cartesian = self.expert_cartesian_action
         if self.inference_expert_action:
@@ -258,57 +214,47 @@ class KitchenWrapper(LLFWrapper):
             target_action = self._prev_expert_cartesian
             self._prev_expert_cartesian = expert_cartesian.copy()
 
-            # Querying `expert_action` re-ran the reactive FSM against the new state, so the
-            # diagnostics below (selected subtask, phase, live waypoint) describe where the
-            # agent is *now* -- which is what the stage and guidance sentences must report.
+            # Diagnostics now describe where the agent is *now*, since `expert_action` re-ran the FSM.
             expert_diagnostics = self._policy.get_diagnostics()
         else:
             target_action = None
             expert_diagnostics = None
         eef_after = self._sim.eef_pos.copy()
 
-        # 3. the three language-feedback parts.
-        #
-        # 3a. Task progress: which goal subtask is active and how far into it the
-        #     manipulation has got. The kitchen goal is an unordered *set* and the expert
-        #     picks its order at random, so -- as in BlockPushingWrapper._step -- the stage
-        #     is read off the live state rather than assumed. Here the reactive policy has
-        #     already re-derived it from the simulator (`cfg.reactive`), so its selected
-        #     subtask and FSM phase are that state-derived stage.
-        #
-        # 3b. Action optimality: does the action the agent just took agree with what the
-        #     expert would have done from the same state, over all 7 dimensions?
-        #     `None` (rather than True/False) when there is no expert to agree with, which
-        #     suppresses both hindsight channels below.
-        #
-        # 3c. Movement guidance: where the gripper still has to go from here, in Cartesian
-        #     terms plus the wrist and the gripper. The env's action space is already a
-        #     Cartesian delta (see scripted_policy.validate_action_contract), so no
-        #     conversion is needed -- the expert's own waypoint is a world-frame position.
+        # 3. the structured feedback record: (3a) task progress -- active subtask and its FSM
+        # phase, read off the live state since the goal is an unordered set; (3b) action
+        # optimality -- does the agent's action agree with the expert's over all 7 dims; (3c)
+        # movement signals -- remaining Cartesian/wrist/gripper corrections. The hp/hn text is
+        # rendered from this record below; LLM-BC merges the records of an action chunk with
+        # the same merger, so the single-step label is exactly a one-record window.
+        kitchen = self.kitchen_env
         if self.inference_expert_action:
-            _stage_feedback = self._stage_feedback(expert_diagnostics)
             agreement = self._action_agreement(action_cartesian, target_action)
-            _recommend_feedback, _gripper_feedback, move_residual, turn_residual = \
-                self._movement_guidance(expert_diagnostics, eef_before, eef_after,
-                                        action_cartesian, expert_cartesian, target_action)
+            move_residual, moving_away_axis, turn_residual, turning_away_axis, gripper = \
+                self._movement_signals(expert_diagnostics, eef_before, eef_after,
+                                       action_cartesian, expert_cartesian, target_action)
+            record = KitchenStepRecord(
+                t=self.t,
+                subtask=expert_diagnostics['selected_subtask'],
+                phase=expert_diagnostics['controller_phase'],
+                n_completed=len(kitchen.episode_task_completions),
+                completed_order=list(expert_diagnostics['completed_order']),
+                agree=agreement,
+                move_residual=[float(v) for v in move_residual],
+                move_flag=[bool(v) for v in moving_away_axis],
+                turn_residual=[float(v) for v in turn_residual],
+                turn_flag=[bool(v) for v in turning_away_axis],
+                gripper=gripper,
+            )
         else:
-            _stage_feedback = ''
             agreement = None
-            _recommend_feedback, _gripper_feedback = [], None
+            record = None
             move_residual = np.zeros(3)
             turn_residual = np.zeros(3)
 
-        # 4. raw signals underlying the language feedback: the distance and orientation
-        # error to the expert's live waypoint and the active subtask's goal-joint distance
-        # (which together pick the stage), the number of subtasks already banked, the
-        # signed per-axis Cartesian residual and per-axis wrist residual the guidance is
-        # worded from, and how much closer to the waypoint the step actually got
-        # (the hp/hn "moved away" signal).
-        #
-        # All of these but the completion count are read off the expert's plan, so with the
-        # expert off they are reported as 0.0 -- the keys stay, so consumers that index the
-        # dict keep working, and the feature reward degrades to the completion count alone.
-        kitchen = self.kitchen_env
+        # 4. raw signals behind the feedback: waypoint/orientation/task-distance errors,
+        # completed-subtask count, per-axis move/wrist residuals, and the "moved away" delta.
+        # All but the completion count read off the expert's plan, so they're 0.0 when it's off.
         if self.inference_expert_action:
             target_position = expert_diagnostics['target_position']
             dist_delta = (0.0 if target_position is None else
@@ -338,8 +284,7 @@ class KitchenWrapper(LLFWrapper):
             gripper_delta=gripper_delta,
             dist_delta=dist_delta,
         )
-        # Alternative reward summing the features (error terms negative, progress terms
-        # positive), exposed via info; the env reward remains the step reward.
+        # Alternative reward summing the features, exposed via info; env reward is unchanged.
         feature_reward = (
             - (features['waypoint_dist'] + features['orientation_error']
                + features['task_distance'])
@@ -352,30 +297,17 @@ class KitchenWrapper(LLFWrapper):
             + features['dist_delta']
         )
 
-        # 5. build the Feedback object.
+        # 5. build the Feedback object. hp/hn are one rendering of the step record: stage
+        # sentence, verdict sentence, then one sentence listing the open corrections.
         feedback = Feedback()
         if 'r' in feedback_type:
             feedback.r = self.format(r_feedback, reward=reward)
-        if 'hp' in feedback_type and agreement:
-            feedback.hp = self.concatenate_sentences(
-                stage_feedback=_stage_feedback,
-                action_feedback=self.format(hp_feedback),
-                reco_feedback=_recommend_feedback,
-                action_positive=True,
-                gripper_feedback=_gripper_feedback,
-            )
-        if 'hn' in feedback_type and agreement is False:
-            feedback.hn = self.concatenate_sentences(
-                stage_feedback=_stage_feedback,
-                action_feedback=self.format(hn_feedback),
-                reco_feedback=_recommend_feedback,
-                action_positive=False,
-                gripper_feedback=_gripper_feedback,
-            )
-        # `fp` names an action only the expert can supply, so it is left unset (rather than
-        # set to an empty sentence) when the expert is off: `Feedback` spells "this channel
-        # has nothing to say" as None, and `LLFWrapper._verbalize_feedback` indexes the last
-        # character of every string it is given, so an empty one would raise there.
+        if record is not None:
+            if 'hp' in feedback_type and agreement:
+                feedback.hp = self._merger.render_records([record], fmt=self.format)
+            if 'hn' in feedback_type and agreement is False:
+                feedback.hn = self._merger.render_records([record], fmt=self.format)
+        # Left unset rather than empty when expert is off: `Feedback` uses None for "nothing to say".
         if 'fp' in feedback_type and expert_action is not None:
             feedback.fp = self.format(fp_feedback,
                                       expert_action=self.textualize_expert_action(expert_action))
@@ -391,6 +323,7 @@ class KitchenWrapper(LLFWrapper):
         info['video'] = video if self.env._render_video else None
         info['tasks_to_complete'] = self._normalized_tasks_to_complete(info)
         info['expert_diagnostics'] = expert_diagnostics
+        info['feedback_record'] = None if record is None else record.to_dict()
         info['features'] = features
         info['feature_reward'] = float(feature_reward)
         observation = self._format_obs(observation)
@@ -433,41 +366,10 @@ class KitchenWrapper(LLFWrapper):
             [gripper],
         ]), -1.0, 1.0)
 
-    # -- language feedback parts -------------------------------------------------------
-    def _stage_feedback(self, diagnostics):
-        """Part 1: what the arm is doing now, as subtask + manipulation phase.
-
-        The subtask is whichever goal element the reactive expert has selected for the
-        current state, and the phase is that subtask's point in
-        ``scripted_policy.PHASE_SEQUENCE`` (reach -> align -> approach -> grasp ->
-        manipulate -> recede -> verify -> retreat).
-        """
-        task = diagnostics['selected_subtask']
-        prompts, slots = _PHASE_PROMPTS.get(
-            diagnostics['controller_phase'],
-            (kt_prompts.select_subtask_feedback, ()))
-
-        # A phase template that names the subtask is unusable without one; fall back to
-        # the subtask-selection sentence rather than emitting a dangling "You are None.".
-        if task is None and slots:
-            prompts, slots = kt_prompts.select_subtask_feedback, ()
-
-        kwargs = {}
-        if 'goal' in slots:
-            kwargs['goal'] = self.format(
-                kt_prompts.GOAL_PHRASES.get(task, kt_prompts.unknown_goal_phrase))
-        if 'object' in slots:
-            kwargs['object'] = self.format(
-                kt_prompts.OBJECT_PHRASES.get(task, kt_prompts.unknown_object_phrase))
-        if 'manipulation' in slots:
-            kwargs['manipulation'] = self.format(
-                kt_prompts.MANIPULATION_PHRASES.get(
-                    task, kt_prompts.unknown_manipulation_phrase))
-        return self.format(prompts, **kwargs)
-
-    def _movement_guidance(self, diagnostics, eef_before, eef_after, action, expert_action,
-                           prev_expert_action):
-        """Part 3: Cartesian, wrist and gripper guidance.
+    # -- language feedback signals -----------------------------------------------------
+    def _movement_signals(self, diagnostics, eef_before, eef_after, action, expert_action,
+                          prev_expert_action):
+        """Part 3: the Cartesian, wrist and gripper corrections behind the movement guidance.
 
         All three action arguments are in the *Cartesian* 7-dim convention, not the joint-space
         action space the agent emits: the agent's command arrives already mapped through the
@@ -476,12 +378,13 @@ class KitchenWrapper(LLFWrapper):
         section reasons about where the gripper should travel and how the wrist should turn,
         neither of which a joint-position delta names directly.
 
-        Returns ``(recommendation sentences, gripper sentence or None, move_residual,
-        turn_residual)``.
+        Returns ``(move_residual, moving_away_axis, turn_residual, turning_away_axis,
+        gripper)`` with ``gripper`` one of ``'open'``, ``'close'`` or ``None``. The wording
+        (direction, degree adverb) is chosen by the merger when it renders the record.
 
         The Cartesian content is the residual to the expert's live waypoint,
         ``target_position - eef_pos``, so a degree adverb maps to a real distance in
-        metres instead of to a step-capped command. A translation axis is only mentioned
+        metres instead of to a step-capped command. A translation axis is only flagged
         when the step just taken made that axis *worse* -- the same "moving away" filter
         ManiskillWrapper applies -- which keeps the advice corrective and the sentence
         short.
@@ -525,29 +428,13 @@ class KitchenWrapper(LLFWrapper):
             for i in range(3)
         ]
 
-        move_direction = move_direction_converter(move_residual)
-        move_degree = move_degree_adverb_converter(move_residual)
-        turn_direction = turn_direction_converter(turn_residual)
-        turn_degree = turn_degree_adverb_converter(turn_residual)
-
-        recommendations = [
-            self.format(move_recommend_templates, direction=direction, degree=degree)
-            for away, direction, degree in zip(moving_away_axis, move_direction, move_degree)
-            if away
-        ] + [
-            self.format(turn_recommend_templates, direction=direction, degree=degree)
-            for away, direction, degree in zip(turning_away_axis, turn_direction, turn_degree)
-            if away
-        ]
-
-        # The gripper clause is corrective only: it fires when the command the agent just
+        # The gripper correction is corrective only: it fires when the command the agent just
         # issued disagrees with what the expert wants from the state now reached.
-        gripper_feedback = None
+        gripper = None
         if abs(expert_action[6]) > _AGREEMENT_EPS and np.sign(action[6]) != np.sign(expert_action[6]):
-            gripper_feedback = self.format(
-                open_gripper_recommend if expert_action[6] > 0 else close_gripper_recommend)
+            gripper = 'open' if expert_action[6] > 0 else 'close'
 
-        return recommendations, gripper_feedback, move_residual, turn_residual
+        return move_residual, moving_away_axis, turn_residual, turning_away_axis, gripper
 
     def _reset(self, *, seed = None, options = None):
         # Bug workaround: KitchenEnv.reset() clears `episode_task_completions` but never
@@ -582,6 +469,15 @@ class KitchenWrapper(LLFWrapper):
         expert_diagnostics = (self._policy.get_diagnostics()
                               if self.inference_expert_action else None)
         info['expert_diagnostics'] = expert_diagnostics
+        # The reset record has no action to judge: `agree` stays None and no correction is
+        # flagged. It gives a multistep window that starts at reset its first stage.
+        info['feedback_record'] = None if expert_diagnostics is None else KitchenStepRecord(
+            t=0,
+            subtask=expert_diagnostics['selected_subtask'],
+            phase=expert_diagnostics['controller_phase'],
+            n_completed=len(kitchen.episode_task_completions),
+            completed_order=list(expert_diagnostics['completed_order']),
+        ).to_dict()
         feedback = Feedback()
         # `fp` names the action in the space the agent acts in, so it is the joint-space
         # recommendation that is verbalized here, not the Cartesian one kept for the geometry.
@@ -756,22 +652,3 @@ class KitchenWrapper(LLFWrapper):
         if isinstance(observation, dict):
             observation = observation['observation']
         return json.dumps({'obs': np.array2string(np.asarray(observation), precision=10)})
-
-    def concatenate_sentences(
-        self,
-        stage_feedback: str,
-        action_feedback: str,
-        reco_feedback: List[str],
-        action_positive: bool,
-        gripper_feedback: str = None):
-
-        res = stage_feedback
-        res += (positive_conjunctions_sampler() if action_positive else negative_conjunctions_sampler()) + action_feedback
-        if gripper_feedback:
-            res += positive_conjunctions_sampler() + gripper_feedback
-
-        for rec in reco_feedback:
-            res += positive_conjunctions_sampler() + rec
-
-        return res
-    

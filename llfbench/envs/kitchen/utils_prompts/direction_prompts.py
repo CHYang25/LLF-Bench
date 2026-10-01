@@ -58,3 +58,13 @@ def turn_direction_converter(difference: np.ndarray):
         random.choice(turn_direction_desc_list[i][int(difference[i] >= 0)])
         for i in range(3)
     ]
+
+
+def move_direction_pool(axis: int, positive: bool):
+    """The paraphrase pool for a signed displacement along world axis ``axis``."""
+    return move_direction_desc_list[axis][int(bool(positive))]
+
+
+def turn_direction_pool(axis: int, positive: bool):
+    """The paraphrase pool for a signed rotation about world axis ``axis``."""
+    return turn_direction_desc_list[axis][int(bool(positive))]

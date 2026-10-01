@@ -47,22 +47,38 @@ fp_feedback = (
     "You should do the action {expert_action}.",
 )
 
-hn_feedback = (
-    "the action is not good for the state.",
-    "the action is not right for the state.",
-    "the action is not helpful for the state.",
-    "the action is not useful for the state.",
-    "the action is not working for the state.",
-    "the action is bad for the state.",
-    "the action is wrong for the state.",
+# ---------------------------------------------------------------------------------------
+# Action-optimality ("verdict") sentences.  The hp/hn channel is rendered by
+# ``llfbench.envs.kitchen.multistep_merger.KitchenMultistepMerger`` from a structured step
+# record, for a single step (``verdict_single_*``) or for a window of steps (the three
+# graded pools).  Pools are kept to two paraphrases so the merger's ``parse`` stays a finite
+# inverse lookup.
+# ---------------------------------------------------------------------------------------
+
+verdict_single_good = (
+    "The action was right.",
+    "The action was correct.",
 )
 
-hp_feedback = (
-    "the action is helpful for the state.",
-    "the action is good for the state.",
-    "the action is right for the state.",
-    "the action is useful for the state.",
-    "the action is working for the state.",
-    "the action is correct for the state.",
-    "the action is good for the state.",
+verdict_single_bad = (
+    "The action was wrong.",
+    "The action was off.",
+)
+
+#: Every scored step in the window agreed with the expert.
+verdict_all_good = (
+    "Every action was right.",
+    "All the actions were right.",
+)
+
+#: Some, but at most half, of the scored steps disagreed.
+verdict_some_bad = (
+    "Most actions were right, but some went wrong.",
+    "Most actions were right, though a few went wrong.",
+)
+
+#: More than half of the scored steps disagreed.
+verdict_most_bad = (
+    "Most actions were wrong.",
+    "Most of the actions were wrong.",
 )

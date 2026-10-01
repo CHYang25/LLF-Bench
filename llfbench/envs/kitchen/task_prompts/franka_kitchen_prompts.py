@@ -1,21 +1,23 @@
 """Stage (task-progress) prompts for FrankaKitchen-v1.
 
 The kitchen goal is a *set* of subtasks that the scripted expert attacks in a randomized
-order, so a flat stage enumeration like block pushing's four constants does not apply.
-Progress is instead reported on two levels, exactly as ``KitchenWrapper._stage_feedback``
-assembles it:
+order, so progress is reported on two levels:
 
-1. which goal subtask is currently being worked on -- ``GOAL_PHRASES`` below; and
-2. how far into that subtask the manipulation is -- one template per FSM phase of
-   ``llfbench.envs.kitchen.scripted_policy.ScriptedKitchenPolicy``.
+1. which goal subtask is being worked on -- ``GOAL_PHRASES`` / ``SUBTASK_NOUNS``; and
+2. how far into that subtask the manipulation is -- one clause per FSM phase of
+   ``llfbench.envs.kitchen.scripted_policy.ScriptedKitchenPolicy`` (``PHASE_GERUND`` for
+   what is happening now, ``PHASE_PAST`` for what happened earlier in a multistep window).
 
-Every phase template takes ``{goal}`` (a gerund phrase from ``GOAL_PHRASES``) and, where
-it names something to touch, ``{object}`` (a noun phrase from ``OBJECT_PHRASES``).  The
-``manipulate`` templates additionally take ``{manipulation}`` from ``MANIPULATION_PHRASES``.
+Every stage sentence is assembled by ``KitchenMultistepMerger.render`` from one of the
+``stage_*`` frames below plus these clauses.  Pools are deliberately small (1-2 variants) so
+the merger's ``parse`` can invert the grammar with a finite lookup table.  Clause templates
+take ``{object}`` (from ``OBJECT_PHRASES``) or ``{manipulation}`` (from
+``MANIPULATION_GERUNDS`` / ``MANIPULATION_PAST``); a phase's gerund and past pools must take
+the same slots.
 """
 
 # ---------------------------------------------------------------------------------------
-# Per-subtask noun / verb phrases, keyed by the goal names in `OBS_ELEMENT_GOALS`.
+# Per-subtask phrases, keyed by the goal names in `OBS_ELEMENT_GOALS`.
 #
 # Gymnasium-Robotics 1.2.1 spells those keys with spaces and merged the variants 1.2.0
 # scored separately: the two hinge doors became one "hinge cabinet" and the four burner
@@ -23,168 +25,283 @@ it names something to touch, ``{object}`` (a noun phrase from ``OBJECT_PHRASES``
 # every sentence to the `unknown_*` fallbacks below, so these have to match exactly.
 # ---------------------------------------------------------------------------------------
 
-#: What the whole subtask is, as a gerund phrase: "You are {goal}."
+#: What the whole subtask is, as a gerund phrase: "You are {goal}, ..."
 GOAL_PHRASES = {
     "microwave": (
         "opening the microwave door",
-        "pulling the microwave door open",
+        "opening the microwave",
     ),
     "kettle": (
         "moving the kettle onto the top left burner",
-        "carrying the kettle over to the top left burner",
+        "moving the kettle to the top left burner",
     ),
     "light switch": (
         "flipping the light switch on",
-        "switching the kitchen light on",
+        "flipping the light switch",
     ),
     "slide cabinet": (
         "sliding the cabinet door open",
-        "pushing the sliding cabinet open",
+        "sliding the cabinet open",
     ),
     "hinge cabinet": (
         "swinging the hinge cabinet door open",
-        "opening the hinge cabinet",
+        "swinging the hinge cabinet open",
     ),
     "bottom burner": (
         "turning the bottom burner knob",
-        "twisting the bottom burner knob on",
+        "turning the bottom burner knob on",
     ),
     "top burner": (
         "turning the top burner knob",
-        "twisting the top burner knob on",
+        "turning the top burner knob on",
     ),
+}
+
+#: The subtask as a short noun phrase, for "You finished {done} and started on {next}".
+SUBTASK_NOUNS = {
+    "microwave": ("the microwave",),
+    "kettle": ("the kettle",),
+    "light switch": ("the light switch",),
+    "slide cabinet": ("the slide cabinet",),
+    "hinge cabinet": ("the hinge cabinet",),
+    "bottom burner": ("the bottom burner",),
+    "top burner": ("the top burner",),
 }
 
 #: The thing the gripper actually reaches for and touches.
 OBJECT_PHRASES = {
     "microwave": (
         "the microwave door handle",
-        "the handle on the microwave door",
+        "the microwave handle",
     ),
     "kettle": (
         "the kettle handle",
-        "the handle on top of the kettle",
+        "the handle on the kettle",
     ),
     "light switch": (
         "the light switch",
-        "the light switch on the wall",
+        "the light",
     ),
     "slide cabinet": (
         "the sliding cabinet handle",
-        "the handle of the sliding cabinet door",
+        "the sliding cabinet door handle",
     ),
     "hinge cabinet": (
         "the hinge cabinet handle",
-        "the handle of the hinge cabinet door",
+        "the hinge cabinet door handle",
     ),
     "bottom burner": ("the bottom burner knob",),
     "top burner": ("the top burner knob",),
 }
 
-#: The manipulation itself, as an imperative: "Now {manipulation}."
-MANIPULATION_PHRASES = {
+#: The manipulation itself while it happens, as a gerund clause.  The goal phrase already
+#: names the object, so these stay short.
+MANIPULATION_GERUNDS = {
     "microwave": (
-        "pull the microwave door open",
-        "swing the microwave door open",
+        "pulling the door open",
+        "swinging the door open",
     ),
     "kettle": (
-        "lift the kettle and carry it to the top left burner",
-        "pick the kettle up and set it on the top left burner",
+        "lifting the kettle and carrying it to the burner",
+        "lifting the kettle and setting it on the burner",
     ),
     "light switch": (
-        "push the light switch across until it clicks on",
-        "slide the light switch on",
+        "pushing the switch across until it clicks on",
+        "pushing the switch across to turn it on",
     ),
     "slide cabinet": (
-        "slide the cabinet door across to open it",
-        "push the sliding cabinet door open",
+        "sliding the door across to open it",
+        "sliding the door open",
     ),
     "hinge cabinet": (
-        "swing the hinge cabinet door open",
-        "pull the hinge cabinet door open",
+        "swinging the door open",
+        "pulling the door open",
     ),
-    "bottom burner": ("twist the bottom burner knob around",),
-    "top burner": ("twist the top burner knob around",),
+    "bottom burner": ("twisting the knob around",),
+    "top burner": ("twisting the knob around",),
+}
+
+#: The same manipulation in the past tense, for the two-phase window summary.
+MANIPULATION_PAST = {
+    "microwave": (
+        "pulled the door open",
+        "swung the door open",
+    ),
+    "kettle": (
+        "lifted the kettle and carried it to the burner",
+        "lifted the kettle and set it on the burner",
+    ),
+    "light switch": (
+        "pushed the switch across until it clicked on",
+        "pushed the switch across to turn it on",
+    ),
+    "slide cabinet": (
+        "slid the door across to open it",
+        "slid the door open",
+    ),
+    "hinge cabinet": (
+        "swung the door open",
+        "pulled the door open",
+    ),
+    "bottom burner": ("twisted the knob around",),
+    "top burner": ("twisted the knob around",),
 }
 
 #: Fallbacks for a task the pools above do not name.
 unknown_goal_phrase = ("working on the next kitchen subtask",)
+unknown_subtask_noun = ("the subtask",)
 unknown_object_phrase = ("the target object",)
-unknown_manipulation_phrase = ("move the target object into place",)
+unknown_manipulation_gerund = ("moving the target object into place",)
+unknown_manipulation_past = ("moved the target object into place",)
 
 
 # ---------------------------------------------------------------------------------------
-# Per-phase stage templates.
+# Per-phase clauses.  Keys are the phase constants of ``scripted_policy``.
 # ---------------------------------------------------------------------------------------
 
-orient_forward_feedback = (
-    "Before reaching for anything, turn the gripper around to face the counter.",
-    "Start by rotating the gripper into a front facing pose over the counter.",
-    "First square the gripper up with the counter in front of you.",
+#: What the arm is doing now: "You are {goal}, {clause}."
+PHASE_GERUND = {
+    "orient_forward": (
+        "turning the gripper to face the counter",
+        "rotating the gripper to face the counter",
+    ),
+    "select_subtask": (
+        "picking the next subtask",
+        "choosing the next subtask",
+    ),
+    "move_to_precontact": (
+        "moving the gripper toward {object}",
+        "bringing the gripper over to {object}",
+    ),
+    "align": (
+        "squaring the gripper up with {object}",
+        "lining the gripper up with {object}",
+    ),
+    "approach": (
+        "closing in on {object}",
+        "moving in close on {object}",
+    ),
+    "contact_or_grasp": (
+        "taking hold of {object}",
+        "closing the gripper on {object}",
+    ),
+    "manipulate": ("{manipulation}",),
+    "kettle_transport": (
+        "carrying it over to the burner",
+        "carrying it to the burner",
+    ),
+    "recede": (
+        "letting go of {object} and backing away",
+        "releasing {object} and backing away",
+    ),
+    "verify": (
+        "holding steady while the subtask settles",
+        "holding still while the subtask settles",
+    ),
+    "retreat": (
+        "backing the gripper away",
+        "pulling the gripper back",
+    ),
+}
+
+#: What the arm did earlier in the window: "You are {goal}. You {past1}, then {past2}."
+PHASE_PAST = {
+    "orient_forward": (
+        "turned the gripper to face the counter",
+        "rotated the gripper to face the counter",
+    ),
+    "select_subtask": (
+        "picked the next subtask",
+        "chose the next subtask",
+    ),
+    "move_to_precontact": (
+        "moved the gripper toward {object}",
+        "brought the gripper over to {object}",
+    ),
+    "align": (
+        "squared the gripper up with {object}",
+        "lined the gripper up with {object}",
+    ),
+    "approach": (
+        "closed in on {object}",
+        "moved in close on {object}",
+    ),
+    "contact_or_grasp": (
+        "took hold of {object}",
+        "closed the gripper on {object}",
+    ),
+    "manipulate": ("{manipulation}",),
+    "kettle_transport": (
+        "carried it over to the burner",
+        "carried it to the burner",
+    ),
+    "recede": (
+        "let go of {object} and backed away",
+        "released {object} and backed away",
+    ),
+    "verify": (
+        "held steady while the subtask settled",
+        "held still while the subtask settled",
+    ),
+    "retreat": (
+        "backed the gripper away",
+        "pulled the gripper back",
+    ),
+}
+
+
+# ---------------------------------------------------------------------------------------
+# Stage sentence frames.
+# ---------------------------------------------------------------------------------------
+
+#: Same subtask and phase over the whole window (this is also every single-step label).
+stage_single = (
+    "You are {goal}, {clause}.",
+    "You are {goal} and {clause}.",
 )
 
-select_subtask_feedback = (
-    "Pick the next kitchen subtask to work on.",
-    "Choose which kitchen subtask to do next.",
-    "Decide on the next subtask in the kitchen goal.",
+#: Same subtask, the phase advanced inside the window.
+stage_two_phase = (
+    "You are {goal}. You {past1}, then {past2}.",
+    "You are {goal}. You {past1} and then {past2}.",
 )
 
-move_to_precontact_feedback = (
-    "You are {goal}. Move the gripper toward {object}.",
-    "You are {goal}. Bring the gripper over to {object}.",
-    "You are {goal}, so get the gripper near {object}.",
+#: A subtask was completed inside the window and the next one was selected.
+stage_switch = (
+    "You finished {done} and started on {next}, {clause}.",
+    "You finished {done} and moved on to {next}, {clause}.",
 )
 
-align_feedback = (
-    "You are {goal}. Rotate the wrist so the gripper squares up with {object}.",
-    "You are {goal}. Turn the gripper until it lines up with {object}.",
-    "You are {goal}, so line the gripper up with {object} before you close in.",
+#: A subtask was completed inside the window and none has been selected yet.
+stage_switch_unselected = (
+    "You finished {done}. Pick the next subtask.",
+    "You finished {done}. Choose the next subtask.",
 )
 
-approach_feedback = (
-    "You are {goal}. Close in on {object}.",
-    "You are {goal}. Move the gripper the last stretch onto {object}.",
-    "You are {goal}, so bring the fingers right up to {object}.",
+#: The expert switched subtask without completing the first (stall / abandonment).
+stage_moved_on = (
+    "You moved on from {done} to {next}, {clause}.",
+    "You left {done} for {next}, {clause}.",
 )
 
-contact_or_grasp_feedback = (
-    "You are {goal}. Take hold of {object}.",
-    "You are {goal}. Grasp {object} with the fingers.",
-    "You are {goal}, so close the gripper on {object}.",
+#: The window began with no subtask selected (orienting / choosing) and one is now active.
+stage_started = (
+    "You started on {next}, {clause}.",
+    "You began {next}, {clause}.",
 )
 
-manipulate_feedback = (
-    "You are {goal}. Now {manipulation}.",
-    "You are {goal}. Go ahead and {manipulation}.",
-    "You are {goal}, so {manipulation}.",
+#: No subtask selected (orienting between tasks, choosing the next one).
+stage_no_subtask = (
+    "You are {clause}.",
 )
 
-kettle_transport_feedback = (
-    "You are {goal}. Carry the kettle over to the top left burner and set it down.",
-    "You have the kettle. Transport it to the top left burner.",
-    "The kettle is in the gripper, so move it across to the top left burner.",
+#: Retreating right after a completion, when the expert has already dropped the subtask.
+stage_done_retreat = (
+    "You are done with {done}, {clause}.",
+    "You are finished with {done}, {clause}.",
 )
 
-recede_feedback = (
-    "You are {goal}. Let go of {object} and back the gripper away.",
-    "You are {goal}. Release {object} and withdraw the gripper.",
-    "You are {goal}, so open the fingers on {object} and pull the gripper clear.",
-)
-
-verify_feedback = (
-    "You are {goal}. Hold steady and check that the subtask is finished.",
-    "You are {goal}. Keep still for a moment and confirm the subtask is done.",
-    "You are {goal}, so hold the pose and let the subtask settle.",
-)
-
-retreat_feedback = (
-    "You are done with {object}. Withdraw the gripper and move on to the next subtask.",
-    "Pull the gripper back from {object} and go on to the next subtask.",
-    "Back the gripper away from {object} so the next subtask can start.",
-)
-
-idle_feedback = (
-    "Every kitchen subtask in the goal is finished.",
-    "All of the goal's kitchen subtasks are complete.",
-    "There is nothing left in the kitchen goal to do.",
+stage_idle = (
+    "Every subtask is done.",
+    "Every kitchen subtask is finished.",
 )

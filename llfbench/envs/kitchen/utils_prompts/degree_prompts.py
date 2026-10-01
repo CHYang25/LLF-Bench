@@ -29,14 +29,33 @@ MOVE_MEDIUM_THRESHOLD = 8e-2
 TURN_LOW_THRESHOLD = 5e-2
 TURN_MEDIUM_THRESHOLD = 2e-1
 
+#: A magnitude inside each bucket, used when a label is parsed back into a record.  Each
+#: value re-buckets to its own key and sits above the merger's deadbands.
+MOVE_BUCKET_REPRESENTATIVE = {"very_low": 1e-2, "low": 5e-2, "medium": 1.5e-1}
+TURN_BUCKET_REPRESENTATIVE = {"very_low": 3.5e-2, "low": 1.2e-1, "medium": 3e-1}
 
-def _bucket(value: float, low: float, medium: float) -> str:
+
+def _bucket_key(value: float, low: float, medium: float) -> str:
     value = abs(value)
     if value < low:
-        return random.choice(degree_adverbs["very_low"])
+        return "very_low"
     if value < medium:
-        return random.choice(degree_adverbs["low"])
-    return random.choice(degree_adverbs["medium"])
+        return "low"
+    return "medium"
+
+
+def move_degree_bucket(value: float) -> str:
+    """Bucket key for a Cartesian displacement, in metres."""
+    return _bucket_key(value, MOVE_LOW_THRESHOLD, MOVE_MEDIUM_THRESHOLD)
+
+
+def turn_degree_bucket(value: float) -> str:
+    """Bucket key for a wrist rotation, in radians."""
+    return _bucket_key(value, TURN_LOW_THRESHOLD, TURN_MEDIUM_THRESHOLD)
+
+
+def _bucket(value: float, low: float, medium: float) -> str:
+    return random.choice(degree_adverbs[_bucket_key(value, low, medium)])
 
 
 def move_degree_adverb_converter(difference: np.ndarray):

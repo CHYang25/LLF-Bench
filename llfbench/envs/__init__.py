@@ -5,7 +5,13 @@ from llfbench.envs import optimization
 from llfbench.envs import reco
 from llfbench.envs import poem
 from llfbench.envs import highway
-from llfbench.envs import block_pushing
+try:
+    from llfbench.envs import block_pushing
+except ImportError as exc:  # tf_agents/Keras is not importable in every process (e.g. after
+    # transformers/datasets set up TensorFlow); the other envs and the multistep mergers must
+    # still be usable there, so block pushing is simply left unregistered.
+    import warnings
+    warnings.warn(f"llfbench: block_pushing envs not registered ({exc})")
 from llfbench.envs import maniskill
 from llfbench.envs import pusht
 from llfbench.envs import pointmaze

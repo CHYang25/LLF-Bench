@@ -1,34 +1,24 @@
-# The pools above are fixed sentences with no degree slot; the wrapper builds its movement
-# guidance from the templates below instead, pairing a direction from
-# ``utils_prompts.direction_prompts`` with a degree adverb from ``utils_prompts.degree_prompts``.
+# Movement-guidance clauses.  ``KitchenMultistepMerger.render`` joins every clause of a
+# window into ONE sentence ("Open the gripper, move to the left steadily and pitch upward
+# gently."), so the pools below are bare clauses: no leading "you should", no trailing period.
+# ``{direction}`` comes from ``utils_prompts.direction_prompts`` and ``{degree}`` from
+# ``utils_prompts.degree_prompts``.
 
-move_recommend_templates = [
-    "move {direction} {degree}.",
-    "please move {direction} {degree}.",
-    "you should move {direction} {degree}.",
-    "make a move {direction} {degree}.",
-    "you need to move {direction} {degree}.",
-    "take the gripper {direction} {degree}.",
-]
+move_guidance = (
+    "move {direction} {degree}",
+)
 
-turn_recommend_templates = [
-    "you should {direction} {degree}.",
-    "you need to {direction} {degree}.",
-    "you can {direction} {degree}.",
-    "be sure to {direction} {degree}.",
-    "make sure to {direction} {degree}.",
-]
+#: The turn direction words already carry the verb ("pitch upward", "yaw to the left").
+turn_guidance = (
+    "{direction} {degree}",
+)
 
-close_gripper_recommend = [
-    "you should close the gripper.",
-    "you need to close the gripper.",
-    "close the fingers on it.",
-    "make sure to close the gripper.",
-]
+close_gripper_guidance = (
+    "close the gripper",
+    "close the fingers",
+)
 
-open_gripper_recommend = [
-    "you should open the gripper.",
-    "you need to open the gripper.",
-    "release the fingers.",
-    "make sure to open the gripper.",
-]
+open_gripper_guidance = (
+    "open the gripper",
+    "open the fingers",
+)
