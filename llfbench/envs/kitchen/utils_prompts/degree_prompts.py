@@ -24,15 +24,19 @@ degree_adverbs = {
 MOVE_LOW_THRESHOLD = 2e-2
 MOVE_MEDIUM_THRESHOLD = 8e-2
 
-#: Radians.  ``action[3:6]`` is scaled by 0.5 rad, so a full-scale wrist command is 0.5 rad;
-#: 0.05 rad is ~3 degrees (a trim) and 0.2 rad is ~11 degrees (a real reorientation).
-TURN_LOW_THRESHOLD = 5e-2
-TURN_MEDIUM_THRESHOLD = 2e-1
+#: Radians.  ``action[3:6]`` is scaled by 0.5 rad, but the scripted expert caps its wrist
+#: command at ``max_rotation_step = 0.4``, so the residual it reports never exceeds 0.2 rad.
+#: The old 0.2 medium cutoff therefore coincided with that cap: "medium" only ever meant
+#: "saturated" (19% of flagged expert turns, all sitting at exactly 0.200) and two thirds of
+#: turn guidance fell in "low". Measured 2026-10-01 on flagged expert turns, 0.04 / 0.12
+#: splits them ~17 / 43 / 40%: 0.04 rad is ~2 degrees (a trim), 0.12 rad ~7 degrees.
+TURN_LOW_THRESHOLD = 4e-2
+TURN_MEDIUM_THRESHOLD = 1.2e-1
 
 #: A magnitude inside each bucket, used when a label is parsed back into a record.  Each
 #: value re-buckets to its own key and sits above the merger's deadbands.
 MOVE_BUCKET_REPRESENTATIVE = {"very_low": 1e-2, "low": 5e-2, "medium": 1.5e-1}
-TURN_BUCKET_REPRESENTATIVE = {"very_low": 3.5e-2, "low": 1.2e-1, "medium": 3e-1}
+TURN_BUCKET_REPRESENTATIVE = {"very_low": 3e-2, "low": 8e-2, "medium": 1.6e-1}
 
 
 def _bucket_key(value: float, low: float, medium: float) -> str:

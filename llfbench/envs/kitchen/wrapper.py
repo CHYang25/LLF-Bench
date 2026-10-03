@@ -1,4 +1,4 @@
-from typing import Dict, SupportsFloat, Union, List
+from typing import Dict, SupportsFloat, Union, List, Optional
 import numpy as np
 from llfbench.envs.llf_env import LLFWrapper, Feedback
 from llfbench.envs.kitchen.prompts import *
@@ -41,8 +41,16 @@ _TURN_DEADBAND = TURN_DEADBAND
 #: still regresses a little on some axis (measured over 150 expert steps: median 2.3 mm,
 #: p95 13 mm). Genuinely bad actions are far past this (random actions: median 72 mm).
 _MOVE_REGRESSION_EPS = 2e-3
+#: Metres of progress toward the waypoint, on one axis, that the agent's command may fall
+#: short of the expert's own command before the axis is flagged. Twice the deadband: at
+#: 5 mm, 86% of perturbed steps (ratio 0.5, sigma 0.5) carried move guidance, at 1 cm 83%,
+#: at 2 cm 77%, against 64% from the moving-away test alone; clean expert steps stay at 31%
+#: under all of them, since the expert never falls short of itself.
+_MOVE_SHORTFALL = 1e-2
 #: A commanded direction below this is treated as "no preference" in the agreement test.
 _AGREEMENT_EPS = 1e-8
+#: Cosine slack under the expert's own reading when it floors the verdict; see `_cosine_agreement`.
+_AGREEMENT_FLOOR_SLACK = 1e-6
 
 class KitchenWrapper(LLFWrapper):
 
@@ -187,8 +195,12 @@ class KitchenWrapper(LLFWrapper):
         # 1. one wrapper step == one env step; read state before it advances.
         eef_before = self._sim.eef_pos.copy()
         # Joint command's task-space direction, for judging against the expert's plan below.
+        # The expert's own joint action is read the same way: it floors the verdict, since
+        # IK bends even the expert's command away from its plan (see `_action_agreement`).
         action_cartesian = (self._cartesian_reading_of(action)
                             if self.inference_expert_action else None)
+        expert_action_cartesian = (self._cartesian_reading_of(self.expert_action)
+                                   if self.inference_expert_action else None)
         # Hold the action for `action_repeat` env steps, summing reward across them.
         reward = 0.0
         terminated = truncated = False
@@ -229,10 +241,12 @@ class KitchenWrapper(LLFWrapper):
         # the same merger, so the single-step label is exactly a one-record window.
         kitchen = self.kitchen_env
         if self.inference_expert_action:
-            agreement = self._action_agreement(action_cartesian, target_action)
+            agreement = self._action_agreement(action_cartesian, target_action,
+                                               expert_reading=expert_action_cartesian)
             move_residual, moving_away_axis, turn_residual, turning_away_axis, gripper = \
                 self._movement_signals(expert_diagnostics, eef_before, eef_after,
-                                       action_cartesian, expert_cartesian, target_action)
+                                       action_cartesian, expert_cartesian,
+                                       expert_action_cartesian)
             record = KitchenStepRecord(
                 t=self.t,
                 subtask=expert_diagnostics['selected_subtask'],
@@ -368,15 +382,18 @@ class KitchenWrapper(LLFWrapper):
 
     # -- language feedback signals -----------------------------------------------------
     def _movement_signals(self, diagnostics, eef_before, eef_after, action, expert_action,
-                          prev_expert_action):
+                          expert_reading):
         """Part 3: the Cartesian, wrist and gripper corrections behind the movement guidance.
 
         All three action arguments are in the *Cartesian* 7-dim convention, not the joint-space
         action space the agent emits: the agent's command arrives already mapped through the
-        end-effector Jacobian (:meth:`_cartesian_reading_of`), and the two expert
-        arguments are the scripted policy's own output before it is converted to joints. This
-        section reasons about where the gripper should travel and how the wrist should turn,
-        neither of which a joint-position delta names directly.
+        end-effector Jacobian (:meth:`_cartesian_reading_of`), ``expert_action`` is the
+        scripted policy's own output for the state arrived at, before it is converted to
+        joints, and ``expert_reading`` is the expert's joint action for the state acted from,
+        read through the same Jacobian as ``action`` -- what the expert itself would have
+        commanded on this step, after its own IK, scaling and clipping. This section reasons
+        about where the gripper should travel and how the wrist should turn, neither of which
+        a joint-position delta names directly.
 
         Returns ``(move_residual, moving_away_axis, turn_residual, turning_away_axis,
         gripper)`` with ``gripper`` one of ``'open'``, ``'close'`` or ``None``. The wording
@@ -384,16 +401,24 @@ class KitchenWrapper(LLFWrapper):
 
         The Cartesian content is the residual to the expert's live waypoint,
         ``target_position - eef_pos``, so a degree adverb maps to a real distance in
-        metres instead of to a step-capped command. A translation axis is only flagged
-        when the step just taken made that axis *worse* -- the same "moving away" filter
-        ManiskillWrapper applies -- which keeps the advice corrective and the sentence
-        short.
+        metres instead of to a step-capped command. A translation axis is flagged when the
+        step just taken made that axis *worse* -- the same "moving away" filter
+        ManiskillWrapper applies -- or when the agent's command made ``_MOVE_SHORTFALL``
+        less progress toward the waypoint on that axis than the expert's own command would
+        have. The second test catches the step that still moves the right way but too
+        little, which the regression test lets through; it never fires on the expert's own
+        steps. Together they keep the advice corrective and the sentence short.
 
-        The wrist works the same way. ``rotation_action`` recomputes the full orientation
-        error every step and only then caps it, so the expert's own ``action[3:6]`` is the
-        remaining rotation correction; comparing the expert's command for the state the
-        agent arrived at against its command for the state the agent acted from is the
-        exact rotational analogue of the translation regression test.
+        The wrist is judged by the shortfall test alone. ``rotation_action`` recomputes the
+        full orientation error every step and only then caps it, so the expert's own
+        ``action[3:6]`` is the remaining rotation correction and gives the magnitude; the
+        flag compares the agent's wrist command against the expert's own *reading* for the
+        same state. Comparing against the Cartesian plan instead, as the verdict used to,
+        flagged a wrist axis on 60% of the expert's own steps, because the expert's IK
+        reads a median 28 degrees off its plan in rotation. (A rotation regression test
+        would misfire too: the desired frame itself changes when a skill advances a phase,
+        so the expert's own command can grow through no fault of the agent -- measured on
+        36 of 150 perfectly-tracked steps.)
         """
         target_position = diagnostics['target_position']
         if target_position is None:
@@ -404,22 +429,23 @@ class KitchenWrapper(LLFWrapper):
             target_position = np.asarray(target_position, dtype=np.float64)
             move_residual = target_position - eef_after
             residual_before = target_position - eef_before
+            # Metres of progress toward the waypoint the expert's own command would have
+            # made beyond the agent's, per axis; positive when the agent fell short.
+            shortfall = ((np.asarray(expert_reading[:3], dtype=np.float64)
+                          - np.asarray(action[:3], dtype=np.float64))
+                         * MAX_CARTESIAN_DISPLACEMENT * np.sign(residual_before))
             moving_away_axis = [
-                bool(abs(move_residual[i]) > abs(residual_before[i]) + _MOVE_REGRESSION_EPS
-                     and abs(move_residual[i]) > _MOVE_DEADBAND)
+                bool(abs(move_residual[i]) > _MOVE_DEADBAND
+                     and (abs(move_residual[i]) > abs(residual_before[i]) + _MOVE_REGRESSION_EPS
+                          or shortfall[i] > _MOVE_SHORTFALL))
                 for i in range(3)
             ]
 
         # Radians of world-frame wrist rotation the expert still wants from here.
         turn_residual = np.asarray(expert_action[3:6], dtype=np.float64) * MAX_ROTATION_DISPLACEMENT
-        # A wrist axis is faulted by comparing the agent's command against the expert's
-        # command *for the same state*, which is what the hp/hn verdict compares too. The
-        # translation test cannot be posed this way -- there the sim gives a real
-        # before/after position -- but a rotation regression test would misfire instead,
-        # because the desired frame itself changes when a skill advances a phase, so the
-        # expert's own command can grow through no fault of the agent (measured: it does so
-        # on 36 of 150 perfectly-tracked steps).
-        turn_shortfall = ((np.asarray(prev_expert_action[3:6], dtype=np.float64)
+        # A wrist axis is faulted by comparing the agent's command against what the expert's
+        # own joint action reads *for the same state* -- the floor the hp/hn verdict uses too.
+        turn_shortfall = ((np.asarray(expert_reading[3:6], dtype=np.float64)
                            - np.asarray(action[3:6], dtype=np.float64))
                           * MAX_ROTATION_DISPLACEMENT)
         turning_away_axis = [
@@ -492,8 +518,7 @@ class KitchenWrapper(LLFWrapper):
         )
         return dict(instruction=instruction, observation=observation, feedback=feedback), info
 
-    def _append_debug_policy_feedback(self, feedback, diagnostics, *, action=None,
-                                      expert_action=None):
+    def _append_debug_policy_feedback(self, feedback, diagnostics, *, action=None, expert_action=None):
         """Append a readable snapshot of the scripted expert in debug mode.
 
         Hindsight feedback is not present on every step, so the snapshot is attached to
@@ -591,35 +616,76 @@ class KitchenWrapper(LLFWrapper):
         return sorted(str(t) for t in tasks)
 
     @staticmethod
-    def _cosine_agreement(agent, expert, tolerance: float):
-        """Whether ``agent`` points the same way as ``expert``, by cosine similarity.
+    def _cosine(agent, expert) -> Optional[float]:
+        """Cosine similarity of ``agent`` to ``expert``.
 
-        A near-zero expert command expresses no preference and so always agrees; cosine
-        rather than a raw dot product keeps the threshold independent of how large the
-        expert's own step happens to be.
+        ``None`` when the expert command is near zero -- it expresses no preference, so any
+        agent command agrees -- and ``-1.0`` when only the agent's is, so a frozen agent never
+        agrees with an expert that wants to move. Cosine rather than a raw dot product keeps
+        the threshold independent of how large the expert's own step happens to be.
         """
         agent = np.asarray(agent, dtype=np.float64)
         expert = np.asarray(expert, dtype=np.float64)
         expert_norm = float(np.linalg.norm(expert))
         if expert_norm < _AGREEMENT_EPS:
-            return True
+            return None
         agent_norm = float(np.linalg.norm(agent))
         if agent_norm < _AGREEMENT_EPS:
-            return False
-        return bool(float(np.dot(agent, expert)) / (agent_norm * expert_norm) > tolerance)
+            return -1.0
+        return float(np.dot(agent, expert)) / (agent_norm * expert_norm)
 
     @classmethod
-    def _action_agreement(cls, action, expert_action, tolerance: float = 0.0,
-                          rotation_tolerance: float = 0.0):
+    def _cosine_agreement(cls, agent, expert, tolerance: float, floor=None):
+        """Whether ``agent`` points the same way as ``expert``: cosine at least ``tolerance``.
+
+        ``floor`` is the expert's own action read through the same mapping as ``agent``;
+        when it is given, the bar drops to the cosine the expert itself reached, so the
+        agent is never held to a tighter angle than the expert's own command achieved.
+        """
+        cosine = cls._cosine(agent, expert)
+        if cosine is None:
+            return True
+        threshold = tolerance
+        if floor is not None:
+            floor_cosine = cls._cosine(floor, expert)
+            if floor_cosine is not None:
+                # The agent's action usually arrives through the feedback text (8 significant
+                # digits, float32) while the expert's is float64, so an agent replaying the
+                # expert exactly lands within ~1e-8 of the floor on either side. The slack is
+                # far below any angle the verdict is meant to resolve.
+                threshold = min(threshold, floor_cosine - _AGREEMENT_FLOOR_SLACK)
+        return bool(cosine >= threshold)
+
+    #: Minimum cosine between the agent's commanded translation (and, separately, wrist
+    #: rotation) and the expert's plan for the step to be judged good: within 45 degrees.
+    #: Measured 2026-10-01 on arm-noised rollouts (ratio 0.5, sigma 0.5): the old ``> 0``
+    #: hemisphere test called 37% of perturbed steps bad, this calls 73% bad.
+    AGREEMENT_COSINE = 0.707
+
+    @classmethod
+    def _action_agreement(cls, action, expert_action, tolerance: float = AGREEMENT_COSINE,
+                          rotation_tolerance: float = AGREEMENT_COSINE, expert_reading=None):
         """Part 2: whether the agent's action agrees with the expert's, over all 7 dims.
 
-        Positive requires all three of: the commanded translation pointing the same way as
-        the expert's, the commanded wrist rotation pointing the same way as the expert's,
-        and matching gripper signs. Any dimension on which the expert expresses no
-        preference (a near-zero command) is treated as agreeing.
+        Positive requires all three of: the commanded translation within ``tolerance`` (as a
+        cosine) of the expert's, the commanded wrist rotation within ``rotation_tolerance``
+        of the expert's, and matching gripper signs. Any dimension on which the expert
+        expresses no preference (a near-zero command) is treated as agreeing.
+
+        ``expert_reading`` is the expert's *own* joint action read through the same Jacobian
+        as ``action``. The expert's IK, step scaling and clipping bend its command a median
+        19 (translation) / 28 (rotation) degrees away from its Cartesian plan, and 10% of its
+        steps land beyond 64 / 90 degrees, so a fixed 45-degree bar alone would call 30% of
+        the expert's own steps bad. With the reading passed in, each block's threshold is
+        the lower of ``tolerance`` and the cosine the expert itself reached, which labels
+        every expert step good and judges a learner against what was actually achievable.
         """
-        translation_ok = cls._cosine_agreement(action[:3], expert_action[:3], tolerance)
-        rotation_ok = cls._cosine_agreement(action[3:6], expert_action[3:6], rotation_tolerance)
+        translation_ok = cls._cosine_agreement(
+            action[:3], expert_action[:3], tolerance,
+            floor=None if expert_reading is None else expert_reading[:3])
+        rotation_ok = cls._cosine_agreement(
+            action[3:6], expert_action[3:6], rotation_tolerance,
+            floor=None if expert_reading is None else expert_reading[3:6])
         gripper_ok = (abs(expert_action[6]) < _AGREEMENT_EPS
                       or np.sign(action[6]) == np.sign(expert_action[6]))
         return bool(translation_ok and rotation_ok and gripper_ok)
